@@ -5,7 +5,7 @@
 #' @param api_key Character string containing your API key for the-odds-api.com
 #' @return A data frame of prepared prediction data
 #' @importFrom dplyr inner_join filter select left_join
-#' @importFrom lubridate now floor_date with_tz as_date
+#' @importFrom lubridate now floor_date with_tz as_date days
 #' @export
 prepare_predictions <- function(weekly_data) {
   # Get the current date and time in the US/Eastern time zone
