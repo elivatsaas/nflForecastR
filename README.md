@@ -25,7 +25,7 @@ The authors and contributors of nflForecastR are not responsible for any losses,
 ```r
 # Install development version from GitHub
 # install.packages("devtools")
-devtools::install_github("yourusername/nflForecastR")
+devtools::install_github("elivatsaas/nflForecastR")
 ```
 
 ## Core Data Sets
