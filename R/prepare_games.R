@@ -90,7 +90,7 @@ prepare_games <- function(start_year, end_year, weekly_data) {
       max(na.rm = TRUE)
 
       final_data <- final_data %>%
-      filter(!(season == season_max & week > weekly_max - 1))
+      filter(!(season == season_max & week > weekly_max) | week == 1)
 
     return(final_data)
   }

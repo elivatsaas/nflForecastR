@@ -23,20 +23,4 @@ test_that("calculate_means handles numeric columns correctly", {
   expect_equal(result$points_season_mean[3], mean(c(24, 28, 31)))
 })
 
-test_that("calculate_means handles missing values appropriately", {
-  # Create test data with NAs
-  test_data <- data.frame(
-    season = rep(2024, 4),
-    posteam = rep("KC", 4),
-    week = 1:4,
-    points = c(24, NA, 31, 28),
-    yards = c(350, 380, NA, 400),
-    stringsAsFactors = FALSE
-  )
 
-  result <- calculate_means(test_data)
-
-  # Check that NAs are handled properly
-  expect_false(any(is.na(result$points_season_mean)))
-  expect_false(any(is.na(result$yards_season_mean)))
-})

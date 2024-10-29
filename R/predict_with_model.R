@@ -26,7 +26,18 @@ predict_with_model <- function(prediction_data, model, training_data) {
 
   prediction_data_subset <- prediction_data_subset %>%
     mutate(across(where(is.numeric), scale))
+  # Calculate prediction errors using training data
+  if (inherits(model, "ranger")) {
+    training_preds <- predict(model, data = training_data)$predictions
+  } else {
+    training_preds <- predict(model, newdata = training_data)
+  }
+  prediction_errors <- training_data$point_differential - training_preds
 
+  prediction_data_subset <- prediction_data[, model_cols, drop = FALSE]
+
+  prediction_data_subset <- prediction_data_subset %>%
+    mutate(across(where(is.numeric), scale))
   # Handle type conversions
   for (col in model_cols) {
     if (col %in% names(prediction_data_subset)) {
