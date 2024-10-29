@@ -1,0 +1,40 @@
+Package: nflForecastR
+Title: NFL Game Prediction and Analysis Tools
+Version: 0.1.0
+Authors@R: 
+    person("Eli", "Vatsaas", email = "eli.vatsaas@gmail.com", role = c("aut", "cre"))
+Description: A comprehensive toolkit for NFL game prediction and analysis. 
+    Provides functions for processing NFL game data, creating prediction models,
+    analyzing market efficiency, and visualizing results. This package is intended 
+    for educational and research purposes only. The tools and analyses provided 
+    should not be used as the sole basis for gambling or betting decisions. Users 
+    assume all responsibility for any decisions made using this package, including 
+    compliance with applicable laws and regulations regarding sports betting.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports: 
+    caret,
+    dplyr,
+    ggplot2,
+    magrittr,
+    nflfastR,
+    purrr,
+    ranger,
+    stringr,
+    tidyr,
+    zoo,
+    data.table,
+    oddsapiR,
+    car,
+    stats,
+    MASS,
+    ModelMetrics
+Suggests: 
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Depends: 
+    R (>= 2.10)
+Type: Package
