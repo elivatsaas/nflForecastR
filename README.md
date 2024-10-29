@@ -75,6 +75,7 @@ library(dplyr)
 library(ranger)
 
 # 1. Update and prepare data
+updated_games <- update_games(2024)
 scaled_games <- updated_games %>%
 select(-point_differential) %>%
   mutate(across(where(is.numeric), scale)) %>%
