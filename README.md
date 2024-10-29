@@ -225,14 +225,6 @@ write.csv(results, "model_comparison.csv")
 ### Visualization
 - `create_prediction_plot()`: Create visual game predictions
 
-## Data Requirements
-
-### API Keys
-- Required for live odds: Register at the-odds-api.com
-- Set your API key before fetching odds:
-```r
-pred_data <- prepare_predictions("your-api-key-here")
-```
 
 ## License
 
