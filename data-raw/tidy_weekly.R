@@ -111,4 +111,4 @@
 #' @source Processed from nflfastR play-by-play data
 #' @note [team] represents either 'home.' or 'away.' prefix
 #' @note All statistics are calculated prior to the current game
-"game_data"
+"tidy_weekly"
