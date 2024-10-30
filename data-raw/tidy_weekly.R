@@ -61,54 +61,6 @@
 #'   \item{*_cum}{Season-to-date cumulative versions of above statistics}
 #' }
 #' @source Processed from nflfastR play-by-play data
-"weekly_data"
-
-#' Historical NFL Game Statistics
-#'
-#' A dataset containing NFL game statistics with separate home and away team metrics,
-#' processed from nflfastR play-by-play data. Contains pregame statistics and betting lines.
-#'
-#' @format A data frame with 2582 rows and 443 variables:
-#' \describe{
-#'   # Game Identification
-#'   \item{season}{NFL season year}
-#'   \item{week}{Game week number}
-#'   \item{game_id}{Unique game identifier}
-#'   \item{home_team}{Home team abbreviation}
-#'   \item{away_team}{Away team abbreviation}
-#'
-#'   # Game Outcomes
-#'   \item{point_differential}{Final score difference (home - away)}
-#'   \item{total}{Total points scored}
-#'   \item{div_game}{Indicator for divisional games}
-#'
-#'   # Team Statistics (prefixed with home. or away.)
-#'   \item{[team].points_scored}{Points scored}
-#'   \item{[team].off_epa}{Offensive Expected Points Added}
-#'   \item{[team].pass_epa}{EPA on passing plays}
-#'   \item{[team].rush_epa}{EPA on rushing plays}
-#'
-#'   # QB Performance (prefixed with home. or away.)
-#'   \item{[team].qb_epa}{Quarterback EPA}
-#'   \item{[team].qb_cpoe}{Completion Percentage Over Expected}
-#'   \item{[team].qb_passer_rating}{NFL passer rating}
-#'   \item{[team].qb_approx_qbr}{Approximate QBR}
-#'
-#'   # QB Protection/Pressure (prefixed with home. or away.)
-#'   \item{[team].qb_pressure_percentage_taken}{Pressure rate on QB}
-#'   \item{[team].qb_sack_percentage_taken}{Sack rate}
-#'   \item{[team].qb_hurry_percentage_taken}{Hurry rate}
-#'
-#'   # Efficiency Metrics (prefixed with home. or away.)
-#'   \item{[team].points_per_drive}{Points per drive}
-#'   \item{[team].points_per_play}{Points per play}
-#'   \item{[team].third_down_conversion_rate}{Third down conversion rate}
-#'   \item{[team].red_zone_conversion_rate}{Red zone conversion rate}
-#'
-#'   # Cumulative Statistics
-#'   \item{[team].[stat]_cum}{Season-to-date cumulative versions of above statistics}
-#' }
-#' @source Processed from nflfastR play-by-play data
-#' @note [team] represents either 'home.' or 'away.' prefix
-#' @note All statistics are calculated prior to the current game
 "tidy_weekly"
+
+
