@@ -58,21 +58,59 @@ predict_with_model <- function(prediction_data, model, training_data) {
     predict(model, newdata = prediction_data_subset)
   }
 
-  # Create the result data frame
+  calculate_win_probability <- function(y_true, y_pred, new_prediction) {
+    # Calculate historical prediction errors
+    errors <- y_true - y_pred
+
+    # Create empirical distribution of errors using kernel density estimation
+    error_density <- density(errors, kernel="gaussian", n=1024)
+
+    # Create empirical cumulative distribution function
+    error_ecdf <- ecdf(errors)
+
+    # For a new prediction, calculate probability that actual result will be > 0
+    # by considering all possible errors
+    x_grid <- error_density$x
+    y_grid <- error_density$y
+
+    # Calculate probability of win by integrating over error distribution
+    # where predicted_value + error > 0
+    win_threshold <- -new_prediction  # error needed to change prediction to loss
+    win_prob <- 1 - error_ecdf(win_threshold)
+
+    # Calculate confidence metrics
+    error_quantiles <- quantile(errors, probs = c(0.025, 0.975))
+    prediction_interval <- c(new_prediction + error_quantiles[1],
+                             new_prediction + error_quantiles[2])
+
+    return(list(
+      win_prob = win_prob,
+      error_density = error_density,
+      prediction_interval = prediction_interval
+    ))
+  }
+
+
+
   result_df <- prediction_data %>%
     mutate(
       predicted_point_differential = predictions,
       chosen_moneyline = ifelse(predicted_point_differential > 0,
                              "Home", "Away"),
       chosen_spread = ifelse(predicted_point_differential > away.spread_line,
-                             "Home", "Away"),
-      # Calculate win probability based on historical prediction accuracy
-      home_win_prob = pnorm(predicted_point_differential,
-                            mean = mean(prediction_errors),
-                            sd = error_sd)
+                             "Home", "Away")
     ) %>%
     select(home_team, away_team, predicted_point_differential,
-           away.spread_line, chosen_moneyline, chosen_spread, home_win_prob)
+           away.spread_line, chosen_moneyline, chosen_spread)
+
+  win_prob_results <- lapply(result_df$predicted_point_differential, function(pred) {
+    calculate_win_probability(
+      y_true = training_data$point_differential,
+      y_pred = training_preds,
+      new_prediction = pred
+    )
+  })
+  result_df$home_win_prob <- sapply(win_prob_results, function(x) x$win_prob)
 
   # Print formatted results with additional error information
   cat("\nModel Performance on Training Data:\n")
