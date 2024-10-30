@@ -66,4 +66,4 @@
 #' @note [team] represents either 'home' or 'away' prefix for all team statistics
 #' @note Most statistics have both most recent game values and cumulative (_cum) versions
 #' @note point_differential and total should never be included in a predictive model
-"tidy_data"
+"tidy_games"
