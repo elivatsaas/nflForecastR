@@ -1,14 +1,14 @@
-#\' @keywords internal
+#' @keywords internal
 NULL
 
-#\' Load all files in the data directory
-#\' @importFrom utils data
+#' Load all files in the data directory
+#' @importFrom utils data
 .onLoad <- function(libname, pkgname) {
   # Load the datasets into the package environment
   utils::data("tidy_weekly", package = pkgname, envir = parent.env(environment()))
   utils::data("tidy_games", package = pkgname, envir = parent.env(environment()))
+  utils::data("nfl_schedule_2024", package = pkgname, envir = parent.env(environment()))
 }
-
 #\' NFL Weekly Team Statistics
 #\'
 #\' A dataset containing weekly NFL team statistics processed from nflfastR play-by-play data.
