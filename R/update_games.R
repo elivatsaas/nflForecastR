@@ -31,7 +31,7 @@ update_games <- function(years, replace_existing = FALSE) {
     }
 
     # Combine data
-    updated_data <- bind_rows(stored_data, new_data) %>%q
+    updated_data <- bind_rows(stored_data, new_data) %>%
       arrange(season, week, home_team, away_team)
 
     return(updated_data)
