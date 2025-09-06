@@ -2,12 +2,16 @@
 % Please edit documentation in R/prepare_prediction.R
 \name{prepare_predictions}
 \alias{prepare_predictions}
-\title{Prepare NFL Prediction Data}
+\title{Prepare NFL Prediction Data (FIXED VERSION)}
 \usage{
-prepare_predictions(weekly_data)
+prepare_predictions(weekly_data, target_week = NULL, target_season = NULL)
 }
 \arguments{
-\item{api_key}{Character string containing your API key for the-odds-api.com}
+\item{weekly_data}{Weekly team data from prepare_weekly()}
+
+\item{target_week}{Optional: specify week to predict (if NULL, finds upcoming week)}
+
+\item{target_season}{Optional: specify season (if NULL, uses current year)}
 }
 \value{
 A data frame of prepared prediction data

@@ -2,25 +2,41 @@
 % Please edit documentation in R/prepare_games.R
 \name{prepare_games}
 \alias{prepare_games}
-\title{Prepare NFL Schedule Data}
+\title{Enhanced Prepare NFL Schedule Data}
 \usage{
-prepare_games(start_year, end_year, weekly_data)
+prepare_games(
+  start_year,
+  end_year,
+  weekly_data,
+  include_injuries = TRUE,
+  include_coaching = TRUE,
+  include_referee = TRUE,
+  seed_week1 = TRUE
+)
 }
 \arguments{
-\item{start_year}{Starting season year}
+\item{start_year}{integer, first season}
 
-\item{end_year}{Ending season year}
+\item{end_year}{integer, last season}
 
-\item{weekly_data}{dataframe produced by "prepare_weekly"}
+\item{weekly_data}{data.frame produced by \code{prepare_weekly()} (team-week features)}
+
+\item{include_injuries}{logical, join injury impacts if \code{analyze_injury_impacts()} exists}
+
+\item{include_coaching}{logical, join coaching tiers and lagged QB stability if
+\code{analyze_coaching_performance()} exists}
+
+\item{include_referee}{logical, keep referee metadata (no PBP work here)}
+
+\item{seed_week1}{logical, if TRUE carry prior season’s final stats forward
+into Week 1 for lagged features}
 }
 \value{
-A data frame of prepared schedule data
+data.frame of games with home/away lagged features and schedule fields
 }
 \description{
-Prepares NFL schedule data with team statistics for prediction.
-}
-\examples{
-\dontrun{
-schedule_data <- prepare_games(2024, 2024)
-}
+Builds a modeling frame by joining nflreadr schedule with lagged team features
+from \code{weekly_data}. Team features are lagged 1 week
+within (season, posteam) before joining to each game. Optionally seed Week 1
+lagged features from the final game of the prior season.
 }
