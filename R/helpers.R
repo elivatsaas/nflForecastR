@@ -1,18 +1,19 @@
 #' Calculate Last 3 Games Average
 #' @keywords internal
-#' Calculate mean of last 3 games or season
+#' Calculate mean of last \code{n} games or of the entire vector when fewer than \code{n}
+#' games are available.
 #'
-#' @param data Data frame containing stats
-#' @param n Number of games to look back
+#' @param data Numeric vector containing statistics
+#' @param n Number of games to look back (default 3)
 #' @return Numeric mean value
 #' @importFrom utils tail
+#' @importFrom zoo rollmean
 #' @export
 last_3_or_season_mean <- function(data, n = 3) {
-  n <- length(x)
-  if (n < 3) {
-    return(mean(x, na.rm = TRUE))
+  if (length(data) < n) {
+    mean(data, na.rm = TRUE)
   } else {
-    return(tail(rollmean(x, k = 3, align = "right", fill = NA), 1))
+    tail(rollmean(data, k = n, align = "right", fill = NA), 1)
   }
 }
 
@@ -55,6 +56,7 @@ calculate_momentum <- function(current, last_3, season) {
 #' @return Data frame with added cumulative statistics columns
 #' @importFrom dplyr group_by mutate ungroup arrange
 #' @importFrom tidyr fill
+#' @importFrom rlang sym
 #' @export
 fix_all_cumulative_stats <- function(data) {
   # Get all cumulative stat columns (ends with _cum)
@@ -83,7 +85,7 @@ fix_all_cumulative_stats <- function(data) {
     if(col %in% names(data)) {
       cum_col <- paste0(col, "_cum")
       fixed_data <- fixed_data %>%
-        mutate(!!cum_col := cumsum(!!sym(col)))
+        mutate(!!cum_col := cumsum(!!rlang::sym(col)))
     }
   }
 
@@ -95,7 +97,7 @@ fix_all_cumulative_stats <- function(data) {
     if(all(c(num_col, denom_col) %in% names(data))) {
       cum_col <- paste0(ratio_name, "_cum")
       fixed_data <- fixed_data %>%
-        mutate(!!cum_col := cumsum(!!sym(num_col)) / cumsum(!!sym(denom_col)))
+        mutate(!!cum_col := cumsum(!!rlang::sym(num_col)) / cumsum(!!rlang::sym(denom_col)))
     }
   }
 
@@ -128,7 +130,8 @@ american_to_implied <- function(american_odds) {
 #' @examples
 #' implied_to_american(0.5)
 implied_to_american <- function(implied_prob) {
-  ifelse(implied_prob >= 0.5,
+  ifelse(implied_prob > 0.5,
          -100 * implied_prob / (1 - implied_prob),
-         100 * (1 - implied_prob) / implied_prob)
+         ifelse(implied_prob == 0.5, 100,
+                100 * (1 - implied_prob) / implied_prob))
 }

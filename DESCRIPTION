@@ -22,6 +22,7 @@ Imports:
     magrittr,
     nflfastR,
     purrr,
+    rlang,
     ranger,
     stringr,
     tidyr,
