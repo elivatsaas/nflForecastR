@@ -1,18 +1,19 @@
 #' Calculate Last 3 Games Average
 #' @keywords internal
-#' Calculate mean of last 3 games or season
+#' Calculate mean of last \code{n} games or of the entire vector when fewer than \code{n}
+#' games are available.
 #'
-#' @param data Data frame containing stats
-#' @param n Number of games to look back
+#' @param data Numeric vector containing statistics
+#' @param n Number of games to look back (default 3)
 #' @return Numeric mean value
 #' @importFrom utils tail
+#' @importFrom zoo rollmean
 #' @export
 last_3_or_season_mean <- function(data, n = 3) {
-  n <- length(x)
-  if (n < 3) {
-    return(mean(x, na.rm = TRUE))
+  if (length(data) < n) {
+    mean(data, na.rm = TRUE)
   } else {
-    return(tail(rollmean(x, k = 3, align = "right", fill = NA), 1))
+    tail(rollmean(data, k = n, align = "right", fill = NA), 1)
   }
 }
 
@@ -29,17 +30,15 @@ map_team_abbreviation <- function(abbr) {
   )
 }
 
-#' Calculate Team Momentum Score
+#' Calculate Momentum Differential
 #'
-#' Calculate a team's momentum score based on recent performance metrics
+#' Computes a simple momentum metric based on current value, last 3-game
+#' average, and season average.
 #'
-#' @param team_data Data frame containing team statistics
-#' @param game_data Data frame containing game outcomes
-#' @param team Team abbreviation to calculate momentum for
-#' @param before_week Week number to calculate momentum before
-#' @param before_season Season to calculate momentum before
+#' @param current Numeric current value
+#' @param last_3 Numeric average over the last three games
+#' @param season Numeric season average
 #' @return Numeric momentum score
-#' @importFrom dplyr filter select mutate arrange
 #' @export
 calculate_momentum <- function(current, last_3, season) {
   (current - last_3) - (last_3 - season)
@@ -50,11 +49,11 @@ calculate_momentum <- function(current, last_3, season) {
 #' Calculate cumulative statistics for all numeric columns in the dataset
 #'
 #' @param data Data frame containing NFL statistics
-#' @param cols Vector of column names to calculate cumulative stats for.
-#'             If NULL, uses all numeric columns.
+#'
 #' @return Data frame with added cumulative statistics columns
 #' @importFrom dplyr group_by mutate ungroup arrange
 #' @importFrom tidyr fill
+#' @importFrom rlang sym
 #' @export
 fix_all_cumulative_stats <- function(data) {
   # Get all cumulative stat columns (ends with _cum)
@@ -83,7 +82,7 @@ fix_all_cumulative_stats <- function(data) {
     if(col %in% names(data)) {
       cum_col <- paste0(col, "_cum")
       fixed_data <- fixed_data %>%
-        mutate(!!cum_col := cumsum(!!sym(col)))
+        mutate(!!cum_col := cumsum(!!rlang::sym(col)))
     }
   }
 
@@ -95,7 +94,7 @@ fix_all_cumulative_stats <- function(data) {
     if(all(c(num_col, denom_col) %in% names(data))) {
       cum_col <- paste0(ratio_name, "_cum")
       fixed_data <- fixed_data %>%
-        mutate(!!cum_col := cumsum(!!sym(num_col)) / cumsum(!!sym(denom_col)))
+        mutate(!!cum_col := cumsum(!!rlang::sym(num_col)) / cumsum(!!rlang::sym(denom_col)))
     }
   }
 
@@ -128,7 +127,8 @@ american_to_implied <- function(american_odds) {
 #' @examples
 #' implied_to_american(0.5)
 implied_to_american <- function(implied_prob) {
-  ifelse(implied_prob >= 0.5,
+  ifelse(implied_prob > 0.5,
          -100 * implied_prob / (1 - implied_prob),
-         100 * (1 - implied_prob) / implied_prob)
+         ifelse(implied_prob == 0.5, 100,
+                100 * (1 - implied_prob) / implied_prob))
 }

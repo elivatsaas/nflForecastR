@@ -1,17 +1,8 @@
 # tests/testthat/test-helpers.R
 
-test_that("last_3_or_season_mean calculates correctly", {
-  # Fix the last_3_or_season_mean function first
-  last_3_or_season_mean <- function(data, n = 3) {
-    if (length(data) < 3) {
-      return(mean(data, na.rm = TRUE))
-    } else {
-      require(zoo)
-      return(tail(rollmean(data, k = 3, align = "right", fill = NA), 1))
-    }
-  }
+library(nflForecastR)
 
-  # Test cases
+test_that("last_3_or_season_mean calculates correctly", {
   short_data <- c(10, 20)
   expect_equal(last_3_or_season_mean(short_data), mean(short_data))
 
@@ -23,15 +14,6 @@ test_that("last_3_or_season_mean calculates correctly", {
 })
 
 test_that("implied_to_american converts probabilities correctly", {
-  # Fix the implied_to_american function to handle 0.5 correctly
-  implied_to_american <- function(implied_prob) {
-    ifelse(implied_prob > 0.5,
-           -100 * implied_prob / (1 - implied_prob),
-           ifelse(implied_prob == 0.5,
-                  100,
-                  100 * (1 - implied_prob) / implied_prob))
-  }
-
   # Test probabilities greater than 0.5
   expect_equal(implied_to_american(0.6), -150, tolerance = 0.001)
   expect_equal(implied_to_american(0.75), -300, tolerance = 0.001)

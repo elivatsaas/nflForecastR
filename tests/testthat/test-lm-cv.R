@@ -52,6 +52,7 @@ test_that("lm_cv handles different methods correctly", {
 })
 
 test_that("lm_cv respects seed parameter", {
+  set.seed(99)
   # Create test data
   test_data <- data.frame(
     point_differential = rnorm(100),

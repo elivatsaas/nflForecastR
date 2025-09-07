@@ -23,13 +23,7 @@ prepare_games <- function(start_year,
                           include_coaching = TRUE,
                           include_referee  = TRUE,
                           seed_week1       = TRUE) {
-  suppressPackageStartupMessages({
-    library(dplyr)
-    library(tidyr)
-    library(purrr)
-    library(stringr)
-  })
-  
+
   cat("=== ENHANCED NFL DATA PREPARATION ===\n")
   cat("Processing years:", start_year, "to", end_year, "\n")
   cat("Features: Injuries =", include_injuries,
@@ -45,7 +39,7 @@ prepare_games <- function(start_year,
   sched <- purrr::map_dfr(
     years,
     ~ nflreadr::load_schedules(.x) %>%
-      dplyr::select(any_of(c(
+      dplyr::select(dplyr::any_of(c(
         "game_id","season","week","game_type",
         "gameday","weekday","gametime","location",
         "home_team","away_team",
@@ -59,7 +53,7 @@ prepare_games <- function(start_year,
         "home_coach","away_coach",
         "referee","stadium_id","stadium"
       )))
-  ) %>% distinct()
+  ) %>% dplyr::distinct()
   
   cat("Available schedule features: ",
       paste(names(sched), collapse = ", "), "\n")
@@ -67,6 +61,16 @@ prepare_games <- function(start_year,
     cat("Referee data coverage:",
         round(mean(!is.na(sched$referee) & sched$referee != "")*100), "% of games\n")
   }
+
+  # Restrict schedule to seasons, weeks, and teams present in weekly_data
+  valid_seasons <- unique(weekly_data$season)
+  valid_weeks <- unique(weekly_data$week)
+  valid_teams <- unique(weekly_data$posteam)
+  sched <- sched %>%
+    dplyr::filter(season %in% valid_seasons,
+                  week %in% valid_weeks,
+                  home_team %in% valid_teams,
+                  away_team %in% valid_teams)
   
   # ------------------ 2) WEEKLY → LAGGED FEATURES ------------------
   # Keys that must NEVER be lagged
@@ -79,14 +83,14 @@ prepare_games <- function(start_year,
   ), names(weekly_data))
   
   # Numeric columns eligible for lag, excluding keys & pregame
-  num_cols  <- names(dplyr::select(weekly_data, where(is.numeric)))
+  num_cols  <- names(dplyr::select(weekly_data, dplyr::where(is.numeric)))
   lag_cols  <- setdiff(num_cols, c(key_cols, pregame_cols))
   
   weekly_lag <- weekly_data %>%
     dplyr::arrange(.data$season, .data$posteam, .data$week) %>%
     dplyr::group_by(.data$season, .data$posteam) %>%
     dplyr::mutate(
-      dplyr::across(all_of(lag_cols), ~ dplyr::lag(.x, 1))
+    dplyr::across(dplyr::all_of(lag_cols), ~ dplyr::lag(.x, 1))
     ) %>%
     dplyr::ungroup()
   
@@ -94,11 +98,11 @@ prepare_games <- function(start_year,
   if (seed_week1) {
     # For each team/season, take last week values and shift them to next season
     carry <- weekly_data %>%
-      dplyr::group_by(.data$posteam, .data$season) %>%
-      dplyr::filter(.data$week == max(.data$week)) %>%
+      dplyr::group_by(posteam, season) %>%
+      dplyr::filter(week == max(week)) %>%
       dplyr::ungroup() %>%
-      dplyr::mutate(season = .data$season + 1L) %>%
-      dplyr::select(.data$posteam, .data$season, dplyr::all_of(lag_cols))
+      dplyr::mutate(season = season + 1L) %>%
+      dplyr::select(posteam, season, dplyr::all_of(lag_cols))
     
     weekly_lag <- weekly_lag %>%
       dplyr::left_join(carry, by = c("posteam","season"), suffix = c("", "_carry"))
@@ -119,12 +123,12 @@ prepare_games <- function(start_year,
   # Build home/away frames (prefix all non-key columns)
   base_cols <- setdiff(names(weekly_lag), key_cols)
   home_df <- weekly_lag %>%
-    dplyr::rename(home_team = .data$posteam) %>%
-    dplyr::rename_with(~ paste0("home.", .x), .cols = all_of(base_cols))
-  
+    dplyr::rename(home_team = posteam) %>%
+    dplyr::rename_with(~ paste0("home.", .x), .cols = dplyr::all_of(base_cols))
+
   away_df <- weekly_lag %>%
-    dplyr::rename(away_team = .data$posteam) %>%
-    dplyr::rename_with(~ paste0("away.", .x), .cols = all_of(base_cols))
+    dplyr::rename(away_team = posteam) %>%
+    dplyr::rename_with(~ paste0("away.", .x), .cols = dplyr::all_of(base_cols))
   
   # ------------------ 3) JOIN schedule + lagged team features ------------------
   games <- sched %>%
@@ -151,7 +155,7 @@ prepare_games <- function(start_year,
       # Coach tiers
       if (is.data.frame(coach_res$coach_tiers) && nrow(coach_res$coach_tiers)) {
         coach_tiers <- coach_res$coach_tiers %>%
-          dplyr::select(any_of(c("coach_name","coach_tier","coaching_score",
+          dplyr::select(dplyr::any_of(c("coach_name","coach_tier","coaching_score",
                                  "experience_level","win_percentage"))) %>%
           dplyr::distinct()
         
@@ -186,19 +190,19 @@ prepare_games <- function(start_year,
             dplyr::arrange(.data$season, .data$posteam, .data$week) %>%
             dplyr::group_by(.data$season, .data$posteam) %>%
             dplyr::mutate(
-              dplyr::across(any_of(c("qb_stability","qb_experience")), ~ dplyr::lag(.x, 1)),
-              dplyr::across(any_of(c("qb_change_flag")),               ~ dplyr::lag(.x, 1))
+            dplyr::across(dplyr::any_of(c("qb_stability","qb_experience")), ~ dplyr::lag(.x, 1)),
+            dplyr::across(dplyr::any_of(c("qb_change_flag")),               ~ dplyr::lag(.x, 1))
             ) %>%
             dplyr::ungroup()
           
           if (seed_week1) {
             qb_carry <- qb_tbl %>%
-              dplyr::group_by(.data$posteam, .data$season) %>%
-              dplyr::filter(.data$week == max(.data$week)) %>%
+              dplyr::group_by(posteam, season) %>%
+              dplyr::filter(week == max(week)) %>%
               dplyr::ungroup() %>%
-              dplyr::mutate(season = .data$season + 1L) %>%
-              dplyr::select(.data$posteam, .data$season,
-                            any_of(c("qb_stability","qb_experience","qb_change_flag")))
+              dplyr::mutate(season = season + 1L) %>%
+              dplyr::select(posteam, season,
+                            dplyr::any_of(c("qb_stability","qb_experience","qb_change_flag")))
             
             qb_lag <- qb_lag %>%
               dplyr::left_join(qb_carry, by = c("posteam","season"), suffix = c("", "_carry"))
@@ -221,14 +225,14 @@ prepare_games <- function(start_year,
               qb_lag %>%
                 dplyr::rename(home_team = posteam) %>%
                 dplyr::rename_with(~ paste0("home_", .x),
-                                   -any_of(c("season","week","home_team"))),
+                                   -dplyr::any_of(c("season","week","home_team"))),
               by = c("season","week","home_team")
             ) %>%
             dplyr::left_join(
               qb_lag %>%
                 dplyr::rename(away_team = posteam) %>%
                 dplyr::rename_with(~ paste0("away_", .x),
-                                   -any_of(c("season","week","away_team"))),
+                                   -dplyr::any_of(c("season","week","away_team"))),
               by = c("season","week","away_team")
             ) %>%
             dplyr::mutate(
@@ -252,7 +256,7 @@ prepare_games <- function(start_year,
         warning("Injury table lacks team identifier (team/posteam/abbrev). Skipping injury join.")
       } else {
         base_inj <- inj %>%
-          dplyr::select(any_of(c("season","week", id_col,
+          dplyr::select(dplyr::any_of(c("season","week", id_col,
                                  "total_injury_impact","qb_injury_impact",
                                  "skill_injury_impact","oline_injury_impact",
                                  "defense_injury_impact","num_key_injuries"))) %>%
@@ -263,14 +267,14 @@ prepare_games <- function(start_year,
             base_inj %>%
               dplyr::rename(home_team = posteam) %>%
               dplyr::rename_with(~ paste0("home_", .x),
-                                 -any_of(c("season","week","home_team"))),
+                                 -dplyr::any_of(c("season","week","home_team"))),
             by = c("season","week","home_team")
           ) %>%
           dplyr::left_join(
             base_inj %>%
               dplyr::rename(away_team = posteam) %>%
               dplyr::rename_with(~ paste0("away_", .x),
-                                 -any_of(c("season","week","away_team"))),
+                                 -dplyr::any_of(c("season","week","away_team"))),
             by = c("season","week","away_team")
           ) %>%
           dplyr::mutate(

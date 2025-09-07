@@ -28,6 +28,35 @@ The authors and contributors of nflForecastR are not responsible for any losses,
 devtools::install_github("elivatsaas/nflForecastR")
 ```
 
+## Setting the Odds API Key
+
+To retrieve live betting lines you need an API key from
+[the-odds-api.com](https://the-odds-api.com/). Set it via one of the
+following methods:
+
+### macOS/Linux
+```bash
+export ODDS_API_KEY="your_key_here"
+```
+
+### Windows (PowerShell)
+```powershell
+setx ODDS_API_KEY "your_key_here"
+```
+
+### In R
+```r
+Sys.setenv(ODDS_API_KEY = "your_key_here")
+```
+
+## Running Tests and Documentation
+
+Use the helper script to regenerate documentation and execute all tests:
+
+```bash
+Rscript scripts/run_all_tests.R
+```
+
 ## Core Data Sets
 
 ### tidy_weekly
@@ -63,151 +92,59 @@ recent_games <- tidy_games %>%
          point_differential, away.spread_line)
 ```
 
-## Workflow Examples
-
-## Complete Workflow Examples
-
-### Base Model Workflow
+## Modeling Workflow
 
 ```r
 library(nflForecastR)
-library(dplyr)
 library(ranger)
 
-# 1. Update and prepare data
-updated_games <- update_games(2024)
-scaled_games <- updated_games %>%
-select(-point_differential) %>%
-  mutate(across(where(is.numeric), scale)) %>%
-  mutate(point_differential = updated_games$point_differential)
+# 1. Build weekly and game data for 2019-2024
+weekly <- update_weekly(2019:2024, replace_existing = TRUE)
+games  <- prepare_games(start_year = 2019, end_year = 2024, weekly_data = weekly)
 
-# 2a. Train and evaluate linear model
-lm_cv_results <- lm_cv(
-  point_differential ~ home.off_epa_cum + home.def_epa_cum + 
-    away.off_epa_cum + away.def_epa_cum,
-  data = scaled_games
+# 2. Train on 2019-2023, hold out 2024
+train_games <- subset(games, season <= 2023)
+test_games  <- subset(games, season == 2024)
+
+# 3. Evaluate multiple formulas with cross-validation
+formulas <- list(
+  point_differential ~ home.qb_passer_rating + away.qb_passer_rating,
+  point_differential ~ home.off_epa + away.def_epa + home.rest - away.rest
 )
 
+evaluate_formula <- function(f) {
+  lm_res <- lm_cv(f, train_games, k = 5, seed = 42)
+  rf_res <- rf_cv(f, train_games, k = 5, seed = 42)
+  rbind(
+    data.frame(formula = deparse(f), model = "lm", lm_res$average_metrics),
+    data.frame(formula = deparse(f), model = "rf", rf_res$average_metrics)
+  )
+}
 
-# 2b. Train and evaluate random forest
-rf_cv_results <- rf_cv(
-  point_differential ~ home.off_epa_cum + home.def_epa_cum + 
-    away.off_epa_cum + away.def_epa_cum,
-  data = scaled_games
-)
+results <- do.call(rbind, lapply(formulas, evaluate_formula))
+print(results)
 
+# 4. Fit best model on all training data
+best <- results[which.max(results$SpreadAccuracy), ]
+best_formula <- as.formula(best$formula)
+if (best$model == "lm") {
+  final_model <- lm(best_formula, data = train_games)
+} else {
+  final_model <- ranger::ranger(best_formula, data = train_games, num.trees = 500)
+}
 
-# 3. Train final models
-lm_model <- lm(
-  point_differential ~ home.off_epa_cum + home.def_epa_cum + 
-    away.off_epa_cum + away.def_epa_cum,
-  data = scaled_games
-)
+# 5. Predict 2024 games and visualize
+pred_2024 <- predict_with_model(test_games, final_model, training_data = train_games)
+head(pred_2024)
 
-rf_model <- ranger(
-  point_differential ~ home.off_epa_cum + home.def_epa_cum + 
-    away.off_epa_cum + away.def_epa_cum, 
-  data = scaled_games
-)
+# 6. Optional: backtest 2019-2024 walk-forward
+bt <- backtest_model(years = 2019:2024, model_type = best$model, formula = best_formula)
+bt$overall_metrics
 
-weekly_2024 <- prepare_weekly(2024)
-
-# 4. Get prediction data
-pred_data <- prepare_predictions(weekly_2024)  # Gets current week's matchups with odds
-
-# 5. Generate predictions from both models
-lm_predictions <- predict_with_model(pred_data, lm_model, scaled_games)
-rf_predictions <- predict_with_model(pred_data, rf_model, scaled_games)
-
-# 6. Visualize predictions
-lm_plot <- create_prediction_plot(lm_predictions)
-lm_plot
-rf_plot <- create_prediction_plot(rf_predictions)
-rf_plot
-```
-
-### Extended Analysis Workflow
-
-```r
-# Extended Analysis Workflow
-
-# 1. Get up-to-date data
-updated_weekly <- update_weekly(2024)
-
-# 2. Calculate season means and other derived statistics
-extended_weekly <- calculate_means(updated_weekly)
-
-# 3. Prepare game-level data with the extended statistics
-extended_games <- prepare_games(2015, 2024, extended_weekly)
-extended_games <- na.omit(extended_games)
-
-# 4. Scale the data
-scaled_extended <- extended_games %>%
-  select(-point_differential) %>%
-  mutate(across(where(is.numeric), scale)) %>%
-  mutate(point_differential = extended_games$point_differential)
-
-# 5. Train and evaluate model (using either lm_cv or rf_cv)
-lm_extended_cv <- lm_cv(
-  point_differential ~ home.off_epa_season_mean + home.def_epa_season_mean + 
-    away.off_epa_season_mean + away.def_epa_season_mean,
-  data = scaled_extended
-)
-
-
-# 2b. Train and evaluate random forest
-rf_extended_cv <- rf_cv(
-  point_differential ~ home.off_epa_season_mean + home.def_epa_season_mean + 
-    away.off_epa_season_mean + away.def_epa_season_mean,
-  data = scaled_extended
-)
-
-
-# 3. Train final models
-lm_model_extended <- lm(
-  point_differential ~ home.off_epa_season_mean + home.def_epa_season_mean + 
-    away.off_epa_season_mean + away.def_epa_season_mean,
-  data = scaled_extended
-)
-
-rf_model_extended <- ranger(
-  point_differential ~ home.off_epa_season_mean + home.def_epa_season_mean + 
-    away.off_epa_season_mean + away.def_epa_season_mean,
-  data = scaled_extended
-)
-
-# 7. Get prediction data for current week
-pred_data <- prepare_predictions(extended_weekly%>%filter(season==2024))
-
-# 8. Make predictions
-lm_predictions <- predict_with_model(pred_data, final_model, scaled_extended)
-lm_predictions <- predict_with_model(pred_data, final_model, scaled_extended)
-
-lm_predictions <- predict_with_model(pred_data, lm_model_extended, scaled_games)
-rf_predictions <- predict_with_model(pred_data, rf_model_extended, scaled_games)
-# 9. Visualize
-plot <- create_prediction_plot(predictions)
-plot
-```
-
-### Model Comparison and Selection
-
-```r
-# Compare any number of models
-results <- compare_models(
-  "Base LM" = lm_cv_results,
-  "Base RF" = rf_cv_results,
-  "Extended LM" = lm_extended_cv,
-  "Extended RF" = rf_extended_cv
-)
-
-# Access specific metrics
-best_rmse <- results %>%
-  filter(RMSE_Best == TRUE) %>%
-  select(Model, RMSE)
-
-# Save comparison
-write.csv(results, "model_comparison.csv")
+# 7. Prepare upcoming week and plot predictions
+upcoming <- prepare_predictions(weekly)
+future_preds <- predict_with_model(upcoming, final_model, training_data = train_games)
+create_prediction_plot(future_preds)
 ```
 ## Key Functions
 

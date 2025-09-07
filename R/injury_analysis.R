@@ -1,12 +1,7 @@
 # ==================== INJURY_ANALYSIS.R ====================
 # Comprehensive injury impact analysis and player availability tracking
 
-library(dplyr)
-library(stringr)
-library(tidyr)
-library(nflreadr)
-library(purrr)
-library(tibble)
+
 
 # ---------------------------------------------------------------------
 # Helpers
@@ -47,6 +42,7 @@ library(tibble)
 #' @param start_year integer
 #' @param end_year integer
 #' @return data.frame team-week impacts
+#' @import dplyr stringr tidyr purrr tibble
 analyze_injury_impacts <- function(start_year, end_year) {
   
   injury_years <- intersect(start_year:end_year, 2009:2025)

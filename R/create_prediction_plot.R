@@ -4,7 +4,9 @@
 #' @param background Character: "black" or "white" (default: "black")
 #' @param week Numeric: NFL week number
 #' @param layout Character: "vertical" or "horizontal" (default: "vertical")
-#' @importFrom ggplot2 ggplot aes theme_void theme
+#' @importFrom ggplot2 ggplot aes theme_void theme geom_rect geom_text
+#'   scale_fill_identity coord_fixed element_rect margin
+#'   scale_x_continuous scale_y_continuous
 #' @importFrom nflplotR geom_nfl_logos
 #' @importFrom grid unit
 #' @export

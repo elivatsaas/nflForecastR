@@ -15,6 +15,7 @@
 #' @param return_all logical; if TRUE (default), return full dataset
 #'   (stored +/- rebuilt). If FALSE, return only the `years` you asked for.
 #' @return data.frame of updated games
+#' @import dplyr tidyr purrr
 #' @export
 update_games <- function(years,
                          replace_existing = FALSE,
@@ -23,12 +24,7 @@ update_games <- function(years,
                          include_coaching = TRUE,
                          include_referee  = TRUE,
                          return_all       = TRUE) {
-  suppressPackageStartupMessages({
-    library(dplyr)
-    library(tidyr)
-    library(purrr)
-  })
-  
+
   years <- sort(unique(years))
   
   # --- Load stored data if available ---
