@@ -1,8 +1,13 @@
 #' Enhanced predict_with_model with Interaction Term Support
-#' 
-#' Automatically handles interaction terms for both lm and ranger models
-#' Creates interaction terms on-the-fly for prediction data
 #'
+#' Automatically handles interaction terms for both lm and ranger models and
+#' returns win probabilities for the home team.
+#'
+#' @param prediction_data Data frame of games to predict
+#' @param model Fitted `lm` or `ranger` model
+#' @param training_data Training data used to fit the model
+#' @return A data frame with predictions and `home_win_prob`
+#' @importFrom stats pnorm
 predict_with_model <- function(prediction_data, model, training_data) {
   
   # Helper function to create interaction terms in data
@@ -94,15 +99,19 @@ predict_with_model <- function(prediction_data, model, training_data) {
     training_spread_correct <- NA
   }
   
+  # Estimate spread of residuals for win probability
+  sd_res <- stats::sd(training_data$point_differential - training_preds)
+
   # Create results dataframe
   result_df <- prediction_data %>%
     mutate(
       predicted_point_differential = predictions,
       chosen_moneyline = ifelse(predicted_point_differential > 0, "Home", "Away"),
-      chosen_spread = ifelse(predicted_point_differential > away.spread_line, "Home", "Away")
+      chosen_spread = ifelse(predicted_point_differential > away.spread_line, "Home", "Away"),
+      home_win_prob = stats::pnorm(predicted_point_differential, mean = 0, sd = sd_res)
     ) %>%
     select(any_of(c("home_team", "away_team")), predicted_point_differential,
-           away.spread_line, chosen_moneyline, chosen_spread)
+           away.spread_line, chosen_moneyline, chosen_spread, home_win_prob)
   
   # Enhanced performance reporting
   cat("\n=== MODEL PERFORMANCE ===\n")

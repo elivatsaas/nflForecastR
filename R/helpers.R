@@ -30,17 +30,15 @@ map_team_abbreviation <- function(abbr) {
   )
 }
 
-#' Calculate Team Momentum Score
+#' Calculate Momentum Differential
 #'
-#' Calculate a team's momentum score based on recent performance metrics
+#' Computes a simple momentum metric based on current value, last 3-game
+#' average, and season average.
 #'
-#' @param team_data Data frame containing team statistics
-#' @param game_data Data frame containing game outcomes
-#' @param team Team abbreviation to calculate momentum for
-#' @param before_week Week number to calculate momentum before
-#' @param before_season Season to calculate momentum before
+#' @param current Numeric current value
+#' @param last_3 Numeric average over the last three games
+#' @param season Numeric season average
 #' @return Numeric momentum score
-#' @importFrom dplyr filter select mutate arrange
 #' @export
 calculate_momentum <- function(current, last_3, season) {
   (current - last_3) - (last_3 - season)
@@ -51,8 +49,7 @@ calculate_momentum <- function(current, last_3, season) {
 #' Calculate cumulative statistics for all numeric columns in the dataset
 #'
 #' @param data Data frame containing NFL statistics
-#' @param cols Vector of column names to calculate cumulative stats for.
-#'             If NULL, uses all numeric columns.
+#'
 #' @return Data frame with added cumulative statistics columns
 #' @importFrom dplyr group_by mutate ungroup arrange
 #' @importFrom tidyr fill

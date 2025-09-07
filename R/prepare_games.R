@@ -62,6 +62,16 @@ prepare_games <- function(start_year,
     cat("Referee data coverage:",
         round(mean(!is.na(sched$referee) & sched$referee != "")*100), "% of games\n")
   }
+
+  # Restrict schedule to seasons, weeks, and teams present in weekly_data
+  valid_seasons <- unique(weekly_data$season)
+  valid_weeks <- unique(weekly_data$week)
+  valid_teams <- unique(weekly_data$posteam)
+  sched <- sched %>%
+    dplyr::filter(season %in% valid_seasons,
+                  week %in% valid_weeks,
+                  home_team %in% valid_teams,
+                  away_team %in% valid_teams)
   
   # ------------------ 2) WEEKLY → LAGGED FEATURES ------------------
   # Keys that must NEVER be lagged
@@ -89,11 +99,11 @@ prepare_games <- function(start_year,
   if (seed_week1) {
     # For each team/season, take last week values and shift them to next season
     carry <- weekly_data %>%
-      dplyr::group_by(.data$posteam, .data$season) %>%
-      dplyr::filter(.data$week == max(.data$week)) %>%
+      dplyr::group_by(posteam, season) %>%
+      dplyr::filter(week == max(week)) %>%
       dplyr::ungroup() %>%
-      dplyr::mutate(season = .data$season + 1L) %>%
-      dplyr::select(.data$posteam, .data$season, dplyr::all_of(lag_cols))
+      dplyr::mutate(season = season + 1L) %>%
+      dplyr::select(posteam, season, dplyr::all_of(lag_cols))
     
     weekly_lag <- weekly_lag %>%
       dplyr::left_join(carry, by = c("posteam","season"), suffix = c("", "_carry"))
@@ -114,11 +124,11 @@ prepare_games <- function(start_year,
   # Build home/away frames (prefix all non-key columns)
   base_cols <- setdiff(names(weekly_lag), key_cols)
   home_df <- weekly_lag %>%
-    dplyr::rename(home_team = .data$posteam) %>%
+    dplyr::rename(home_team = posteam) %>%
     dplyr::rename_with(~ paste0("home.", .x), .cols = all_of(base_cols))
-  
+
   away_df <- weekly_lag %>%
-    dplyr::rename(away_team = .data$posteam) %>%
+    dplyr::rename(away_team = posteam) %>%
     dplyr::rename_with(~ paste0("away.", .x), .cols = all_of(base_cols))
   
   # ------------------ 3) JOIN schedule + lagged team features ------------------
@@ -188,11 +198,11 @@ prepare_games <- function(start_year,
           
           if (seed_week1) {
             qb_carry <- qb_tbl %>%
-              dplyr::group_by(.data$posteam, .data$season) %>%
-              dplyr::filter(.data$week == max(.data$week)) %>%
+              dplyr::group_by(posteam, season) %>%
+              dplyr::filter(week == max(week)) %>%
               dplyr::ungroup() %>%
-              dplyr::mutate(season = .data$season + 1L) %>%
-              dplyr::select(.data$posteam, .data$season,
+              dplyr::mutate(season = season + 1L) %>%
+              dplyr::select(posteam, season,
                             any_of(c("qb_stability","qb_experience","qb_change_flag")))
             
             qb_lag <- qb_lag %>%

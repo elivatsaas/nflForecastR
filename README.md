@@ -28,6 +28,35 @@ The authors and contributors of nflForecastR are not responsible for any losses,
 devtools::install_github("elivatsaas/nflForecastR")
 ```
 
+## Setting the Odds API Key
+
+To retrieve live betting lines you need an API key from
+[the-odds-api.com](https://the-odds-api.com/). Set it via one of the
+following methods:
+
+### macOS/Linux
+```bash
+export ODDS_API_KEY="your_key_here"
+```
+
+### Windows (PowerShell)
+```powershell
+setx ODDS_API_KEY "your_key_here"
+```
+
+### In R
+```r
+Sys.setenv(ODDS_API_KEY = "your_key_here")
+```
+
+## Running Tests and Documentation
+
+Use the helper script to regenerate documentation and execute all tests:
+
+```bash
+Rscript scripts/run_all_tests.R
+```
+
 ## Core Data Sets
 
 ### tidy_weekly

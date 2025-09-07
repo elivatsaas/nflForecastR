@@ -8,6 +8,7 @@
 #'
 #' @return A data frame containing processed odds data
 #' @export
+#' @importFrom httr GET stop_for_status content
 get_nfl_odds <- function(api_key = Sys.getenv("ODDS_API_KEY"),
                          regions = "us",
                          markets = c("h2h", "spreads", "totals"),
