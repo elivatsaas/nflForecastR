@@ -15,6 +15,7 @@
 #' @param seed_week1 logical, if TRUE carry prior season’s final stats forward
 #'   into Week 1 for lagged features
 #' @return data.frame of games with home/away lagged features and schedule fields
+#' @import dplyr tidyr purrr stringr
 #' @export
 prepare_games <- function(start_year,
                           end_year,
@@ -129,6 +130,7 @@ prepare_games <- function(start_year,
   away_df <- weekly_lag %>%
     dplyr::rename(away_team = posteam) %>%
     dplyr::rename_with(~ paste0("away.", .x), .cols = dplyr::all_of(base_cols))
+
   
   # ------------------ 3) JOIN schedule + lagged team features ------------------
   games <- sched %>%
@@ -203,7 +205,7 @@ prepare_games <- function(start_year,
               dplyr::mutate(season = season + 1L) %>%
               dplyr::select(posteam, season,
                             dplyr::any_of(c("qb_stability","qb_experience","qb_change_flag")))
-            
+           
             qb_lag <- qb_lag %>%
               dplyr::left_join(qb_carry, by = c("posteam","season"), suffix = c("", "_carry"))
             

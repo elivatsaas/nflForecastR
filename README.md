@@ -94,6 +94,7 @@ recent_games <- tidy_games %>%
 
 ## Modeling Workflow
 
+
 ```r
 library(nflForecastR)
 library(ranger)
@@ -145,6 +146,7 @@ bt$overall_metrics
 upcoming <- prepare_predictions(weekly)
 future_preds <- predict_with_model(upcoming, final_model, training_data = train_games)
 create_prediction_plot(future_preds)
+
 ```
 ## Key Functions
 
