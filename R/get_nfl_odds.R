@@ -1,16 +1,20 @@
 #' Fetch NFL Game Odds
 #'
-#' @param api_key Character string containing your API key for the-odds-api.com
+#' @param api_key Character string containing your API key for the-odds-api.com. If
+#'   not supplied, defaults to the `ODDS_API_KEY` environment variable.
 #' @param regions Character vector of regions (default: "us")
 #' @param markets Character vector of desired markets (default: c("h2h", "spreads", "totals"))
 #' @param odds_format Character string specifying odds format (default: "american")
 #'
 #' @return A data frame containing processed odds data
 #' @export
-get_nfl_odds <- function(regions = "us",
+get_nfl_odds <- function(api_key = Sys.getenv("ODDS_API_KEY"),
+                         regions = "us",
                          markets = c("h2h", "spreads", "totals"),
                          odds_format = "american") {
-  api_key = "82f5b5c4043ffb1c600d99b32c912c87"
+  if (api_key == "") {
+    stop("API key required. Set ODDS_API_KEY env var or supply api_key explicitly.")
+  }
 
 
   # Construct API URL

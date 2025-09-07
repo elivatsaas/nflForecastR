@@ -2,18 +2,12 @@
 # Comprehensive coaching analysis and QB tracking
 # Professional module for coaching performance evaluation
 
-suppressPackageStartupMessages({
-  library(dplyr)
-  library(purrr)
-  library(stringr)
-  library(tidyr)
-})
-
 #' Analyze coaching performance and create tiers
-#'
+#' 
 #' @param schedule_data Complete schedule data with coach names and game results
 #' @return List with: coach_tiers, matchup_analysis, special_situations,
 #'         coaching_trends, starting_qbs
+#' @import dplyr purrr stringr tidyr
 #' @export
 analyze_coaching_performance <- function(schedule_data) {
   cat("Analyzing coaching performance across all seasons...\n")

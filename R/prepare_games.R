@@ -15,6 +15,7 @@
 #' @param seed_week1 logical, if TRUE carry prior season’s final stats forward
 #'   into Week 1 for lagged features
 #' @return data.frame of games with home/away lagged features and schedule fields
+#' @import dplyr tidyr purrr stringr
 #' @export
 prepare_games <- function(start_year,
                           end_year,
@@ -23,13 +24,7 @@ prepare_games <- function(start_year,
                           include_coaching = TRUE,
                           include_referee  = TRUE,
                           seed_week1       = TRUE) {
-  suppressPackageStartupMessages({
-    library(dplyr)
-    library(tidyr)
-    library(purrr)
-    library(stringr)
-  })
-  
+
   cat("=== ENHANCED NFL DATA PREPARATION ===\n")
   cat("Processing years:", start_year, "to", end_year, "\n")
   cat("Features: Injuries =", include_injuries,
