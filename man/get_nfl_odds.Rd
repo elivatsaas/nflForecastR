@@ -5,19 +5,20 @@
 \title{Fetch NFL Game Odds}
 \usage{
 get_nfl_odds(
+  api_key = Sys.getenv("ODDS_API_KEY"),
   regions = "us",
   markets = c("h2h", "spreads", "totals"),
   odds_format = "american"
 )
 }
 \arguments{
+\item{api_key}{Character string containing your API key for the-odds-api.com. Defaults to the \code{ODDS_API_KEY} environment variable.}
+
 \item{regions}{Character vector of regions (default: "us")}
 
 \item{markets}{Character vector of desired markets (default: c("h2h", "spreads", "totals"))}
 
 \item{odds_format}{Character string specifying odds format (default: "american")}
-
-\item{api_key}{Character string containing your API key for the-odds-api.com}
 }
 \value{
 A data frame containing processed odds data

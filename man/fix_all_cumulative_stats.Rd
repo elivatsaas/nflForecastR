@@ -8,9 +8,6 @@ fix_all_cumulative_stats(data)
 }
 \arguments{
 \item{data}{Data frame containing NFL statistics}
-
-\item{cols}{Vector of column names to calculate cumulative stats for.
-If NULL, uses all numeric columns.}
 }
 \value{
 Data frame with added cumulative statistics columns

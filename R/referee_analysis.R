@@ -1,15 +1,14 @@
 # ==================== REFEREE_ANALYSIS.R ====================
 # Comprehensive referee analysis and officiating tendencies
 
-library(dplyr)
-library(purrr)
-library(stringr)
+
 
 #' Analyze referee performance and officiating tendencies
-#'
+#' 
 #' @param schedule_data Complete schedule data with referee assignments
 #' @param pbp_data Play-by-play data for penalty analysis
 #' @return Comprehensive referee analysis with bias detection
+#' @import dplyr purrr stringr
 analyze_referee_performance <- function(schedule_data, pbp_data) {
   
   if (is.null(pbp_data)) {

@@ -28,6 +28,35 @@ The authors and contributors of nflForecastR are not responsible for any losses,
 devtools::install_github("elivatsaas/nflForecastR")
 ```
 
+## Setting the Odds API Key
+
+To retrieve live betting lines you need an API key from
+[the-odds-api.com](https://the-odds-api.com/). Set it via one of the
+following methods:
+
+### macOS/Linux
+```bash
+export ODDS_API_KEY="your_key_here"
+```
+
+### Windows (PowerShell)
+```powershell
+setx ODDS_API_KEY "your_key_here"
+```
+
+### In R
+```r
+Sys.setenv(ODDS_API_KEY = "your_key_here")
+```
+
+## Running Tests and Documentation
+
+Use the helper script to regenerate documentation and execute all tests:
+
+```bash
+Rscript scripts/run_all_tests.R
+```
+
 ## Core Data Sets
 
 ### tidy_weekly
@@ -64,8 +93,6 @@ recent_games <- tidy_games %>%
 ```
 
 ## Workflow Examples
-
-## Complete Workflow Examples
 
 ### Base Model Workflow
 
@@ -129,8 +156,6 @@ rf_plot
 ### Extended Analysis Workflow
 
 ```r
-# Extended Analysis Workflow
-
 # 1. Get up-to-date data
 updated_weekly <- update_weekly(2024)
 
@@ -155,7 +180,7 @@ lm_extended_cv <- lm_cv(
 )
 
 
-# 2b. Train and evaluate random forest
+# 6. Train and evaluate random forest
 rf_extended_cv <- rf_cv(
   point_differential ~ home.off_epa_season_mean + home.def_epa_season_mean + 
     away.off_epa_season_mean + away.def_epa_season_mean,
@@ -163,7 +188,7 @@ rf_extended_cv <- rf_cv(
 )
 
 
-# 3. Train final models
+# 7. Train final models
 lm_model_extended <- lm(
   point_differential ~ home.off_epa_season_mean + home.def_epa_season_mean + 
     away.off_epa_season_mean + away.def_epa_season_mean,
@@ -176,18 +201,18 @@ rf_model_extended <- ranger(
   data = scaled_extended
 )
 
-# 7. Get prediction data for current week
-pred_data <- prepare_predictions(extended_weekly%>%filter(season==2024))
+# 8. Get prediction data for current week
+pred_data <- prepare_predictions(extended_weekly %>% filter(season == 2024))
 
-# 8. Make predictions
-lm_predictions <- predict_with_model(pred_data, final_model, scaled_extended)
-lm_predictions <- predict_with_model(pred_data, final_model, scaled_extended)
+# 9. Make predictions
+lm_predictions <- predict_with_model(pred_data, lm_model_extended, scaled_extended)
+rf_predictions <- predict_with_model(pred_data, rf_model_extended, scaled_extended)
 
-lm_predictions <- predict_with_model(pred_data, lm_model_extended, scaled_games)
-rf_predictions <- predict_with_model(pred_data, rf_model_extended, scaled_games)
-# 9. Visualize
-plot <- create_prediction_plot(predictions)
-plot
+# 10. Visualize
+lm_plot <- create_prediction_plot(lm_predictions)
+lm_plot
+rf_plot <- create_prediction_plot(rf_predictions)
+rf_plot
 ```
 
 ### Model Comparison and Selection

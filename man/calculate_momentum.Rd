@@ -2,24 +2,21 @@
 % Please edit documentation in R/helpers.R
 \name{calculate_momentum}
 \alias{calculate_momentum}
-\title{Calculate Team Momentum Score}
+\title{Calculate Momentum Differential}
 \usage{
 calculate_momentum(current, last_3, season)
 }
 \arguments{
-\item{team_data}{Data frame containing team statistics}
+\item{current}{Numeric current value}
 
-\item{game_data}{Data frame containing game outcomes}
+\item{last_3}{Numeric average over the last three games}
 
-\item{team}{Team abbreviation to calculate momentum for}
-
-\item{before_week}{Week number to calculate momentum before}
-
-\item{before_season}{Season to calculate momentum before}
+\item{season}{Numeric season average}
 }
 \value{
 Numeric momentum score
 }
 \description{
-Calculate a team's momentum score based on recent performance metrics
+Computes a simple momentum metric based on current value, last 3-game
+average, and season average
 }

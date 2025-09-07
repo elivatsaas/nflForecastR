@@ -1,8 +1,9 @@
 # tests/testthat/test-prepare.R
 
 test_that("prepare_games works with valid input", {
-  skip_if_not_installed("nflfastR")
+  skip_if_not_installed("nflreadr")
 
+  set.seed(123)
   # Create test weekly data
   test_weekly <- data.frame(
     season = rep(2024, 10),
@@ -36,6 +37,8 @@ test_that("prepare_games works with valid input", {
 })
 
 test_that("prepare_games handles missing data appropriately", {
+  skip_if_not_installed("nflreadr")
+  set.seed(456)
   # Create test weekly data with some NAs
   test_weekly <- data.frame(
     season = rep(2024, 10),

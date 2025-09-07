@@ -1,6 +1,8 @@
 # tests/testthat/test-update.R
 
 test_that("update_games handles invalid inputs", {
+  skip_if_not_installed("mockery")
+  set.seed(123)
   # Create mock stored data
   mock_stored_data <- data.frame(
     season = rep(2020:2022, each = 5),

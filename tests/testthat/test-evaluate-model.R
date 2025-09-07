@@ -1,6 +1,7 @@
 # tests/testthat/test-evaluate-model.R
 
 test_that("evaluate_formula handles basic linear model correctly", {
+  set.seed(101)
   # Create test data with less perfect correlation
   test_data <- data.frame(
     point_differential = rnorm(100),
@@ -26,6 +27,7 @@ test_that("evaluate_formula handles basic linear model correctly", {
 })
 
 test_that("evaluate_formula handles high correlation appropriately", {
+  set.seed(202)
   # Create test data with high but not perfect correlation
   x <- rnorm(100)
   test_data <- data.frame(
@@ -45,6 +47,7 @@ test_that("evaluate_formula handles high correlation appropriately", {
 })
 
 test_that("evaluate_formula handles missing values appropriately", {
+  set.seed(303)
   # Create test data with NA values
   test_data <- data.frame(
     point_differential = c(rnorm(98), NA, NA),
