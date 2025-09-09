@@ -54,7 +54,12 @@ prepare_games <- function(start_year,
         "home_coach","away_coach",
         "referee","stadium_id","stadium"
       )))
-  ) %>% dplyr::distinct()
+  ) %>%
+    dplyr::distinct() %>%
+    dplyr::mutate(
+      home_team = clean_team_name(home_team),
+      away_team = clean_team_name(away_team)
+    )
   
   cat("Available schedule features: ",
       paste(names(sched), collapse = ", "), "\n")
