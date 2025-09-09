@@ -21,7 +21,12 @@ prepare_weekly <- function(years) {
       suppressMessages(nflfastR::load_pbp(year))
     })
     # Filter out plays without a valid posteam or defteam
-    pbp_data <- pbp_data %>% filter(!is.na(posteam) & !is.na(defteam))
+    pbp_data <- pbp_data %>%
+      filter(!is.na(posteam) & !is.na(defteam)) %>%
+      mutate(
+        posteam = clean_team_name(posteam),
+        defteam = clean_team_name(defteam)
+      )
 
     first_appearances <- pbp_data %>%
       group_by(game_id) %>%

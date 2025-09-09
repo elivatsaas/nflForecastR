@@ -62,8 +62,8 @@ update_games <- function(years,
   } else {
     min(years_to_process):max(years_to_process)
   }
-  # guard: don't fall before the overall min requested year
-  weekly_years <- weekly_years[weekly_years >= min(years)]
+  # guard: allow previous season for carry-over when seeding Week 1
+  weekly_years <- weekly_years[weekly_years >= (min(years) - 1L)]
   
   weekly_data <- prepare_weekly(weekly_years)
   
