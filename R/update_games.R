@@ -94,6 +94,10 @@ update_games <- function(years,
   }
   
   combined <- combined %>%
+    mutate(game_id = dplyr::coalesce(.data$game_id, .data$game_id.x, .data$game_id.y)) %>%
+    select(-dplyr::any_of(c("game_id.x","game_id.y","home.game_id","away.game_id",
+                            "home.posteam_type","away.posteam_type",
+                            "posteam_type.x","posteam_type.y"))) %>%
     distinct(season, week, home_team, away_team, game_id, .keep_all = TRUE) %>%
     arrange(season, week, home_team, away_team)
   
