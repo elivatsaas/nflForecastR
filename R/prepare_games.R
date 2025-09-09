@@ -298,7 +298,15 @@ prepare_games <- function(start_year,
   # ------------------ 6) Derived outcomes & handy features ------------------
   games <- games %>%
     # consolidate duplicate identifiers and drop unused columns
-    dplyr::mutate(game_id = dplyr::coalesce(.data$game_id, .data$game_id.x, .data$game_id.y)) %>%
+    {
+      id_cols <- intersect(c("game_id.x", "game_id.y"), names(.))
+      if (length(id_cols)) {
+        coalesce_cols <- dplyr::select(., dplyr::any_of(c("game_id", id_cols)))
+        dplyr::mutate(., game_id = rlang::exec(dplyr::coalesce, !!!coalesce_cols))
+      } else {
+        .
+      }
+    } %>%
     dplyr::select(-dplyr::any_of(c("game_id.x","game_id.y",
                                    "home.game_id","away.game_id",
                                    "home.posteam_type","away.posteam_type",
