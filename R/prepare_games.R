@@ -50,11 +50,16 @@ prepare_games <- function(start_year,
         "spread_line","total_line",
         "home_spread_odds","away_spread_odds",
         "under_odds","over_odds",
-        "div_game","roof","surface","temp","wind",
+        "div_game","roof","surface",
         "home_coach","away_coach",
         "referee","stadium_id","stadium"
       )))
-  ) %>% dplyr::distinct()
+  ) %>%
+    dplyr::distinct() %>%
+    dplyr::mutate(
+      home_team = clean_team_name(home_team),
+      away_team = clean_team_name(away_team)
+    )
   
   cat("Available schedule features: ",
       paste(names(sched), collapse = ", "), "\n")
@@ -63,15 +68,12 @@ prepare_games <- function(start_year,
         round(mean(!is.na(sched$referee) & sched$referee != "")*100), "% of games\n")
   }
 
-  # Restrict schedule to seasons, weeks, and teams present in weekly_data
+  # Restrict schedule to seasons/weeks present in weekly_data but keep all teams
   valid_seasons <- unique(weekly_data$season)
   valid_weeks <- unique(weekly_data$week)
-  valid_teams <- unique(weekly_data$posteam)
   sched <- sched %>%
     dplyr::filter(season %in% valid_seasons,
-                  week %in% valid_weeks,
-                  home_team %in% valid_teams,
-                  away_team %in% valid_teams)
+                  week %in% valid_weeks)
   
   # ------------------ 2) WEEKLY → LAGGED FEATURES ------------------
   # Keys that must NEVER be lagged
@@ -80,7 +82,7 @@ prepare_games <- function(start_year,
   
   # Pre-game columns that should NOT be lagged if present in weekly_data
   pregame_cols <- intersect(c(
-    "spread_line","total_line","div_game","roof","surface","temp","wind"
+    "spread_line","total_line","div_game","roof","surface"
   ), names(weekly_data))
   
   # Numeric columns eligible for lag, excluding keys & pregame
@@ -124,10 +126,12 @@ prepare_games <- function(start_year,
   # Build home/away frames (prefix all non-key columns)
   base_cols <- setdiff(names(weekly_lag), key_cols)
   home_df <- weekly_lag %>%
+    dplyr::select(season, week, posteam, dplyr::all_of(base_cols)) %>%
     dplyr::rename(home_team = posteam) %>%
     dplyr::rename_with(~ paste0("home.", .x), .cols = dplyr::all_of(base_cols))
 
   away_df <- weekly_lag %>%
+    dplyr::select(season, week, posteam, dplyr::all_of(base_cols)) %>%
     dplyr::rename(away_team = posteam) %>%
     dplyr::rename_with(~ paste0("away.", .x), .cols = dplyr::all_of(base_cols))
 
@@ -290,9 +294,15 @@ prepare_games <- function(start_year,
       }
     }
   }
-  
+
   # ------------------ 6) Derived outcomes & handy features ------------------
   games <- games %>%
+    # consolidate duplicate identifiers and drop unused columns
+    dplyr::mutate(game_id = dplyr::coalesce(.data$game_id, .data$game_id.x, .data$game_id.y)) %>%
+    dplyr::select(-dplyr::any_of(c("game_id.x","game_id.y",
+                                   "home.game_id","away.game_id",
+                                   "home.posteam_type","away.posteam_type",
+                                   "posteam_type.x","posteam_type.y"))) %>%
     dplyr::mutate(
       point_differential = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
                                   .data$home_score - .data$away_score, NA_real_),
