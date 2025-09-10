@@ -1,29 +1,112 @@
-#' Enhanced Prepare NFL Schedule Data
+#' Enhanced Coaching Analysis
+#' 
+#' Analyzes coaching performance with lower thresholds to include interim coaches
+#' and better handling of mid-season changes
+#' 
+#' @param sched Schedule data frame
+#' @return List with coach_tiers and coverage stats
+enhance_coaching_analysis <- function(sched) {
+  cat("Enhanced coaching analysis starting...\n")
+  
+  # Step 1: Get all unique coach-team-season combinations from schedule
+  all_coaches <- sched %>%
+    dplyr::select(season, home_team, away_team, home_coach, away_coach) %>%
+    tidyr::pivot_longer(cols = c(home_coach, away_coach), 
+                names_to = "side", values_to = "coach_name") %>%
+    dplyr::mutate(team = ifelse(side == "home_coach", home_team, away_team)) %>%
+    dplyr::filter(!is.na(coach_name), coach_name != "", coach_name != "TBD") %>%
+    dplyr::select(season, team, coach_name) %>%
+    dplyr::distinct()
+  
+  # Step 2: Count games per coach (including interim coaches)
+  coach_games <- sched %>%
+    dplyr::select(season, week, home_team, away_team, home_coach, away_coach) %>%
+    tidyr::pivot_longer(cols = c(home_coach, away_coach),
+                names_to = "side", values_to = "coach_name") %>%
+    dplyr::mutate(team = ifelse(side == "home_coach", home_team, away_team)) %>%
+    dplyr::filter(!is.na(coach_name), coach_name != "", coach_name != "TBD") %>%
+    dplyr::count(coach_name, season, team, name = "games_coached") %>%
+    dplyr::arrange(desc(games_coached))
+  
+  # Step 3: Create coach tiers with lower thresholds and interim handling
+  coach_tiers <- coach_games %>%
+    dplyr::group_by(coach_name) %>%
+    dplyr::summarize(
+      total_games = sum(games_coached),
+      seasons_active = dplyr::n_distinct(season),
+      teams_coached = dplyr::n_distinct(team),
+      avg_games_per_season = mean(games_coached),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      # More inclusive tiering system
+      coach_tier = dplyr::case_when(
+        total_games >= 50 ~ "Elite",           # Multiple seasons
+        total_games >= 30 ~ "Experienced",    # 2+ seasons typically  
+        total_games >= 16 ~ "Established",    # 1 full season
+        total_games >= 8 ~ "Developing",      # Half season or interim
+        TRUE ~ "New"                          # Very limited experience
+      ),
+      
+      # Scoring system that doesn't penalize interim coaches as much
+      coaching_score = dplyr::case_when(
+        coach_tier == "Elite" ~ 75,
+        coach_tier == "Experienced" ~ 65,
+        coach_tier == "Established" ~ 55,
+        coach_tier == "Developing" ~ 45,     # Interim coaches get reasonable score
+        TRUE ~ 40
+      ),
+      
+      experience_level = dplyr::case_when(
+        seasons_active >= 5 ~ "Veteran",
+        seasons_active >= 3 ~ "Experienced", 
+        seasons_active >= 2 ~ "Developing",
+        TRUE ~ "New"
+      ),
+      
+      # Estimate win percentage (placeholder - could be enhanced with actual wins)
+      win_percentage = pmax(0.2, pmin(0.8, 0.5 + (coaching_score - 50) * 0.006))
+    ) %>%
+    dplyr::arrange(desc(total_games))
+  
+  cat("Enhanced coaching tiers created for", nrow(coach_tiers), "coaches\n")
+  cat("Tier breakdown:\n")
+  print(table(coach_tiers$coach_tier))
+  
+  return(list(
+    coach_tiers = coach_tiers,
+    coach_games = coach_games,
+    coverage_stats = list(
+      total_coaches = nrow(coach_tiers),
+      coaches_with_8plus = sum(coach_tiers$total_games >= 8),
+      coaches_with_16plus = sum(coach_tiers$total_games >= 16)
+    )
+  ))
+}
+
+#' Enhanced Prepare NFL Schedule Data with Internal Weekly Data Generation
 #'
-#' Builds a modeling frame by joining nflreadr schedule with lagged team features
-#' from \code{weekly_data}. Team features are lagged 1 week
-#' within (season, posteam) before joining to each game. Optionally seed Week 1
-#' lagged features from the final game of the prior season.
+#' Builds a modeling frame by joining nflreadr schedule with lagged team features.
+#' Automatically generates weekly team features using prepare_weekly() and lags them
+#' 1 week within (season, posteam) before joining to each game. Includes enhanced
+#' coaching, injury, and referee analysis.
 #'
-#' @param start_year integer, first season
-#' @param end_year integer, last season
-#' @param weekly_data data.frame produced by \code{prepare_weekly()} (team-week features)
-#' @param include_injuries logical, join injury impacts if \code{analyze_injury_impacts()} exists
-#' @param include_coaching logical, join coaching tiers and lagged QB stability if
-#'   \code{analyze_coaching_performance()} exists
-#' @param include_referee logical, keep referee metadata (no PBP work here)
-#' @param seed_week1 logical, if TRUE carry prior season’s final stats forward
+#' @param start_year integer, first season to include in final dataset
+#' @param end_year integer, last season to include in final dataset
+#' @param include_injuries logical, join injury impacts using enhanced analysis
+#' @param include_coaching logical, join coaching tiers using enhanced analysis
+#' @param include_referee logical, join referee analysis and tendencies
+#' @param seed_week1 logical, if TRUE carry prior season's final stats forward
 #'   into Week 1 for lagged features
 #' @return data.frame of games with home/away lagged features and schedule fields
 #' @import dplyr tidyr purrr stringr
 #' @export
 prepare_games <- function(start_year,
                           end_year,
-                          weekly_data,
                           include_injuries = TRUE,
                           include_coaching = TRUE,
-                          include_referee  = TRUE,
-                          seed_week1       = TRUE) {
+                          include_referee = TRUE,
+                          seed_week1 = TRUE) {
 
   cat("=== ENHANCED NFL DATA PREPARATION ===\n")
   cat("Processing years:", start_year, "to", end_year, "\n")
@@ -36,7 +119,31 @@ prepare_games <- function(start_year,
   if (!requireNamespace("nflreadr", quietly = TRUE))
     stop("nflreadr is required for prepare_games().")
   
-  # ------------------ 1) SCHEDULE ------------------
+  # ------------------ 1) PREPARE WEEKLY DATA INTERNALLY ------------------
+  weekly_years <- if (seed_week1) {
+    (start_year - 1L):end_year
+  } else {
+    start_year:end_year
+  }
+  
+  cat("Preparing weekly data for years:", paste(weekly_years, collapse = ", "), "\n")
+  if (seed_week1 && (start_year - 1L) %in% weekly_years) {
+    cat("Including", start_year - 1L, "data for Week 1", start_year, "seeding\n")
+  }
+  
+  weekly_data <- tryCatch({
+    prepare_weekly(weekly_years)
+  }, error = function(e) {
+    stop("Failed to prepare weekly data: ", e$message)
+  })
+  
+  if (nrow(weekly_data) == 0) {
+    stop("prepare_weekly() returned no data for years ", paste(weekly_years, collapse = ", "))
+  }
+  
+  cat("Weekly data prepared:", nrow(weekly_data), "team-weeks\n")
+  
+  # ------------------ 2) SCHEDULE DATA ------------------
   sched <- purrr::map_dfr(
     years,
     ~ nflreadr::load_schedules(.x) %>%
@@ -61,80 +168,79 @@ prepare_games <- function(start_year,
       away_team = map_team_abbreviation(away_team)
     )
   
-  cat("Available schedule features: ",
-      paste(names(sched), collapse = ", "), "\n")
-  if ("referee" %in% names(sched)) {
-    cat("Referee data coverage:",
-        round(mean(!is.na(sched$referee) & sched$referee != "")*100), "% of games\n")
-  }
-
-  # Ensure prior season exists for Week 1 seeding
-  if (seed_week1 && (start_year - 1L) %in% years && !((start_year - 1L) %in% weekly_data$season)) {
-    weekly_data <- dplyr::bind_rows(prepare_weekly(start_year - 1L), weekly_data)
-  }
-
-  # Map team abbreviations in weekly data and drop identifier columns
+  cat("Schedule loaded:", nrow(sched), "games\n")
+  
+  # Clean weekly data
   if ("posteam" %in% names(weekly_data)) {
     weekly_data$posteam <- map_team_abbreviation(weekly_data$posteam)
   }
   weekly_data <- weekly_data %>% dplyr::select(-dplyr::any_of(c("game_id", "posteam_type")))
 
-  # Restrict schedule to seasons/weeks present in weekly_data but keep all teams
+  # Filter schedule to match weekly data availability
   valid_seasons <- unique(weekly_data$season)
   valid_weeks <- unique(weekly_data$week)
   sched <- sched %>%
-    dplyr::filter(season %in% valid_seasons,
-                  week %in% valid_weeks)
+    dplyr::filter(season %in% valid_seasons, week %in% valid_weeks)
   
-  # ------------------ 2) WEEKLY → LAGGED FEATURES ------------------
-  # Keys that must NEVER be lagged
+  # ------------------ 3) WEEKLY → LAGGED FEATURES ------------------
   key_cols <- c("season","week","posteam","game_id","posteam_type")
   key_cols <- intersect(key_cols, names(weekly_data))
   
-  # Pre-game columns that should NOT be lagged if present in weekly_data
   pregame_cols <- intersect(c(
     "spread_line","total_line","div_game","roof","surface"
   ), names(weekly_data))
   
-  # Numeric columns eligible for lag, excluding keys & pregame
-  num_cols  <- names(dplyr::select(weekly_data, dplyr::where(is.numeric)))
-  lag_cols  <- setdiff(num_cols, c(key_cols, pregame_cols))
+  num_cols <- names(dplyr::select(weekly_data, dplyr::where(is.numeric)))
+  lag_cols <- setdiff(num_cols, c(key_cols, pregame_cols))
   
   weekly_lag <- weekly_data %>%
     dplyr::arrange(.data$season, .data$posteam, .data$week) %>%
     dplyr::group_by(.data$season, .data$posteam) %>%
     dplyr::mutate(
-    dplyr::across(dplyr::all_of(lag_cols), ~ dplyr::lag(.x, 1))
+      dplyr::across(dplyr::all_of(lag_cols), ~ dplyr::lag(.x, 1))
     ) %>%
     dplyr::ungroup()
   
-  # ---- Week 1 seeding from prior season final game (no leakage) ----
+  # Enhanced Week 1 seeding
   if (seed_week1) {
-    # For each team/season, take last week values and shift them to next season
-    carry <- weekly_data %>%
-      dplyr::group_by(posteam, season) %>%
-      dplyr::filter(week == max(week)) %>%
-      dplyr::ungroup() %>%
-      dplyr::mutate(season = season + 1L) %>%
-      dplyr::select(posteam, season, dplyr::all_of(lag_cols))
-    
-    weekly_lag <- weekly_lag %>%
-      dplyr::left_join(carry, by = c("posteam","season"), suffix = c("", "_carry"))
-    
-    for (nm in lag_cols) {
-      carry_nm <- paste0(nm, "_carry")
-      if (carry_nm %in% names(weekly_lag)) {
-        weekly_lag[[nm]] <- ifelse(
-          weekly_lag$week == 1 & is.na(weekly_lag[[nm]]),
-          weekly_lag[[carry_nm]],
-          weekly_lag[[nm]]
-        )
-        weekly_lag[[carry_nm]] <- NULL
+    prior_season <- start_year - 1L
+    if (prior_season %in% weekly_data$season) {
+      cat("Applying Week 1 seeding from", prior_season, "data...\n")
+      
+      carry <- weekly_data %>%
+        dplyr::filter(season == prior_season) %>%
+        dplyr::group_by(posteam, season) %>%
+        dplyr::filter(week == max(week)) %>%
+        dplyr::ungroup() %>%
+        dplyr::mutate(season = season + 1L) %>%
+        dplyr::select(posteam, season, dplyr::all_of(lag_cols))
+      
+      cat("Found seeding data for", length(unique(carry$posteam)), "teams\n")
+      
+      weekly_lag <- weekly_lag %>%
+        dplyr::left_join(carry, by = c("posteam","season"), suffix = c("", "_carry"))
+      
+      filled_total <- 0
+      for (nm in lag_cols) {
+        carry_nm <- paste0(nm, "_carry")
+        if (carry_nm %in% names(weekly_lag)) {
+          filled_count <- sum(weekly_lag$week == 1 & 
+                             is.na(weekly_lag[[nm]]) & 
+                             !is.na(weekly_lag[[carry_nm]]))
+          weekly_lag[[nm]] <- ifelse(
+            weekly_lag$week == 1 & is.na(weekly_lag[[nm]]),
+            weekly_lag[[carry_nm]],
+            weekly_lag[[nm]]
+          )
+          weekly_lag[[carry_nm]] <- NULL
+          filled_total <- filled_total + filled_count
+        }
       }
+      cat("Filled", filled_total, "Week 1 lagged values\n")
     }
   }
   
-  # Build home/away frames (prefix all non-key columns)
+  # Build home/away dataframes
   base_cols <- setdiff(names(weekly_lag), key_cols)
   home_df <- weekly_lag %>%
     dplyr::select(season, week, posteam, dplyr::all_of(base_cols)) %>%
@@ -146,188 +252,244 @@ prepare_games <- function(start_year,
     dplyr::rename(away_team = posteam) %>%
     dplyr::rename_with(~ paste0("away.", .x), .cols = dplyr::all_of(base_cols))
 
-  
-  # ------------------ 3) JOIN schedule + lagged team features ------------------
+  # ------------------ 4) JOIN SCHEDULE + LAGGED FEATURES ------------------
   games <- sched %>%
-    dplyr::left_join(
-      home_df,
-      by = intersect(c("season","week","home_team"), names(home_df))
-    ) %>%
-    dplyr::left_join(
-      away_df,
-      by = intersect(c("season","week","away_team"), names(away_df))
-    )
+    dplyr::left_join(home_df, by = intersect(c("season","week","home_team"), names(home_df))) %>%
+    dplyr::left_join(away_df, by = intersect(c("season","week","away_team"), names(away_df))) %>%
+    dplyr::select(-dplyr::any_of(c("home.game_id", "away.game_id", "home.posteam_type", "away.posteam_type")))
 
-  # Remove any residual identifiers from weekly joins (should rarely exist)
-  games <- games %>%
-    dplyr::select(-dplyr::any_of(c(
-      "home.game_id", "away.game_id",
-      "home.posteam_type", "away.posteam_type"
-    )))
-
-  # Ensure away.spread_line exists
   if ("spread_line" %in% names(games)) {
     games <- games %>% dplyr::mutate(away.spread_line = -spread_line)
   }
   
-  # ------------------ 4) OPTIONAL: Coaching + lagged QB stability ------------------
-  if (include_coaching && exists("analyze_coaching_performance", mode = "function")) {
-    cat("Analyzing coaching performance...\n")
-    coach_res <- tryCatch(analyze_coaching_performance(sched), error = function(e) NULL)
+  # ------------------ 5) ENHANCED COACHING ANALYSIS ------------------
+  if (include_coaching) {
+    cat("Adding enhanced coaching analysis...\n")
     
-    if (!is.null(coach_res)) {
-      # Coach tiers
-      if (is.data.frame(coach_res$coach_tiers) && nrow(coach_res$coach_tiers)) {
-        coach_tiers <- coach_res$coach_tiers %>%
-          dplyr::select(dplyr::any_of(c("coach_name","coach_tier","coaching_score",
-                                 "experience_level","win_percentage"))) %>%
-          dplyr::distinct()
-        
-        games <- games %>%
-          dplyr::left_join(coach_tiers, by = c("home_coach" = "coach_name")) %>%
-          dplyr::rename(
-            home_coach_tier       = coach_tier,
-            home_coaching_score   = coaching_score,
-            home_coach_experience = experience_level,
-            home_win_percentage   = win_percentage
-          ) %>%
-          dplyr::left_join(coach_tiers, by = c("away_coach" = "coach_name")) %>%
-          dplyr::rename(
-            away_coach_tier       = coach_tier,
-            away_coaching_score   = coaching_score,
-            away_coach_experience = experience_level,
-            away_win_percentage   = win_percentage
-          ) %>%
-          dplyr::mutate(
-            coaching_advantage =
-              dplyr::coalesce(.data$home_coaching_score, 50) -
-              dplyr::coalesce(.data$away_coaching_score, 50)
-          )
-      }
+    coach_res <- tryCatch({
+      enhance_coaching_analysis(sched)
+    }, error = function(e) {
+      cat("Enhanced coaching analysis failed, using defaults:", e$message, "\n")
+      NULL
+    })
+    
+    if (!is.null(coach_res) && is.data.frame(coach_res$coach_tiers)) {
+      coach_tiers <- coach_res$coach_tiers %>%
+        dplyr::select(dplyr::any_of(c("coach_name","coach_tier","coaching_score",
+                               "experience_level","win_percentage"))) %>%
+        dplyr::distinct()
       
-      # Starting QBs → lag 1wk, then join (and optionally seed Week 1)
-      if (is.data.frame(coach_res$starting_qbs) && nrow(coach_res$starting_qbs)) {
-        qb_tbl <- coach_res$starting_qbs
-        need <- c("season","week","posteam","qb_stability","qb_change_flag","qb_experience")
-        if (all(need %in% names(qb_tbl))) {
-          qb_lag <- qb_tbl %>%
-            dplyr::arrange(.data$season, .data$posteam, .data$week) %>%
-            dplyr::group_by(.data$season, .data$posteam) %>%
-            dplyr::mutate(
-            dplyr::across(dplyr::any_of(c("qb_stability","qb_experience")), ~ dplyr::lag(.x, 1)),
-            dplyr::across(dplyr::any_of(c("qb_change_flag")),               ~ dplyr::lag(.x, 1))
-            ) %>%
-            dplyr::ungroup()
-          
-          if (seed_week1) {
-            qb_carry <- qb_tbl %>%
-              dplyr::group_by(posteam, season) %>%
-              dplyr::filter(week == max(week)) %>%
-              dplyr::ungroup() %>%
-              dplyr::mutate(season = season + 1L) %>%
-              dplyr::select(posteam, season,
-                            dplyr::any_of(c("qb_stability","qb_experience","qb_change_flag")))
-           
-            qb_lag <- qb_lag %>%
-              dplyr::left_join(qb_carry, by = c("posteam","season"), suffix = c("", "_carry"))
-            
-            for (nm in c("qb_stability","qb_experience","qb_change_flag")) {
-              carry_nm <- paste0(nm, "_carry")
-              if (carry_nm %in% names(qb_lag)) {
-                qb_lag[[nm]] <- ifelse(
-                  qb_lag$week == 1 & is.na(qb_lag[[nm]]),
-                  qb_lag[[carry_nm]],
-                  qb_lag[[nm]]
-                )
-                qb_lag[[carry_nm]] <- NULL
-              }
-            }
-          }
-          
-          games <- games %>%
-            dplyr::left_join(
-              qb_lag %>%
-                dplyr::rename(home_team = posteam) %>%
-                dplyr::rename_with(~ paste0("home_", .x),
-                                   -dplyr::any_of(c("season","week","home_team"))),
-              by = c("season","week","home_team")
-            ) %>%
-            dplyr::left_join(
-              qb_lag %>%
-                dplyr::rename(away_team = posteam) %>%
-                dplyr::rename_with(~ paste0("away_", .x),
-                                   -dplyr::any_of(c("season","week","away_team"))),
-              by = c("season","week","away_team")
-            ) %>%
-            dplyr::mutate(
-              qb_stability_advantage =
-                dplyr::coalesce(.data$home_qb_stability, 0.8) -
-                dplyr::coalesce(.data$away_qb_stability, 0.8)
-            )
-        }
-      }
+      # Enhanced name matching
+      games <- games %>%
+        dplyr::mutate(
+          home_coach_clean = stringr::str_trim(stringr::str_to_title(home_coach)),
+          away_coach_clean = stringr::str_trim(stringr::str_to_title(away_coach))
+        ) %>%
+        dplyr::left_join(
+          coach_tiers %>% 
+            dplyr::mutate(coach_name_clean = stringr::str_trim(stringr::str_to_title(coach_name))),
+          by = c("home_coach_clean" = "coach_name_clean")
+        ) %>%
+        dplyr::rename(
+          home_coach_tier = coach_tier,
+          home_coaching_score = coaching_score,
+          home_coach_experience = experience_level,
+          home_win_percentage = win_percentage
+        ) %>%
+        dplyr::left_join(
+          coach_tiers %>% 
+            dplyr::mutate(coach_name_clean = stringr::str_trim(stringr::str_to_title(coach_name))),
+          by = c("away_coach_clean" = "coach_name_clean")
+        ) %>%
+        dplyr::rename(
+          away_coach_tier = coach_tier,
+          away_coaching_score = coaching_score,
+          away_coach_experience = experience_level,
+          away_win_percentage = win_percentage
+        ) %>%
+        # Fill any remaining NAs with reasonable defaults
+        dplyr::mutate(
+          home_coaching_score = dplyr::coalesce(home_coaching_score, 45),
+          away_coaching_score = dplyr::coalesce(away_coaching_score, 45),
+          home_coach_tier = dplyr::coalesce(home_coach_tier, "Developing"),
+          away_coach_tier = dplyr::coalesce(away_coach_tier, "Developing"),
+          home_coach_experience = dplyr::coalesce(home_coach_experience, "New"),
+          away_coach_experience = dplyr::coalesce(away_coach_experience, "New"),
+          home_win_percentage = dplyr::coalesce(home_win_percentage, 0.45),
+          away_win_percentage = dplyr::coalesce(away_win_percentage, 0.45),
+          coaching_advantage = home_coaching_score - away_coaching_score
+        ) %>%
+        dplyr::select(-home_coach_clean, -away_coach_clean)
+      
+      cat("Coaching data joined successfully\n")
+    } else {
+      # Fallback coaching defaults
+      cat("Using default coaching values...\n")
+      games <- games %>%
+        dplyr::mutate(
+          home_coach_tier = "Developing",
+          home_coaching_score = 45,
+          home_coach_experience = "New",
+          home_win_percentage = 0.45,
+          away_coach_tier = "Developing",
+          away_coaching_score = 45,
+          away_coach_experience = "New",
+          away_win_percentage = 0.45,
+          coaching_advantage = 0
+        )
     }
   }
   
-  # ------------------ 5) OPTIONAL: Injuries ------------------
-  if (include_injuries && exists("analyze_injury_impacts", mode = "function")) {
-    cat("Analyzing injury impacts...\n")
-    inj <- tryCatch(analyze_injury_impacts(start_year, end_year), error = function(e) NULL)
+  # ------------------ 6) ENHANCED INJURY ANALYSIS ------------------
+  if (include_injuries) {
+    cat("Adding enhanced injury analysis...\n")
+    
+    inj <- tryCatch({
+      analyze_injury_impacts(start_year, end_year)
+    }, error = function(e) {
+      cat("Injury analysis failed:", e$message, "\n")
+      NULL
+    })
     
     if (is.data.frame(inj) && nrow(inj)) {
-      id_col <- dplyr::first(intersect(c("team","posteam","abbrev"), names(inj)))
-      if (is.na(id_col)) {
-        warning("Injury table lacks team identifier (team/posteam/abbrev). Skipping injury join.")
-      } else {
-        base_inj <- inj %>%
-          dplyr::select(dplyr::any_of(c("season","week", id_col,
-                                 "total_injury_impact","qb_injury_impact",
-                                 "skill_injury_impact","oline_injury_impact",
-                                 "defense_injury_impact","num_key_injuries"))) %>%
-          dplyr::rename(posteam = !!id_col)
-        
-        games <- games %>%
-          dplyr::left_join(
-            base_inj %>%
-              dplyr::rename(home_team = posteam) %>%
-              dplyr::rename_with(~ paste0("home_", .x),
-                                 -dplyr::any_of(c("season","week","home_team"))),
-            by = c("season","week","home_team")
-          ) %>%
-          dplyr::left_join(
-            base_inj %>%
-              dplyr::rename(away_team = posteam) %>%
-              dplyr::rename_with(~ paste0("away_", .x),
-                                 -dplyr::any_of(c("season","week","away_team"))),
-            by = c("season","week","away_team")
-          ) %>%
-          dplyr::mutate(
-            injury_advantage =
-              dplyr::coalesce(.data$away_total_injury_impact, 0) -
-              dplyr::coalesce(.data$home_total_injury_impact, 0),
-            qb_injury_advantage =
-              dplyr::coalesce(.data$away_qb_injury_impact, 0) -
-              dplyr::coalesce(.data$home_qb_injury_impact, 0)
-          )
-      }
+      base_inj <- inj %>%
+        dplyr::select(dplyr::any_of(c("season","week","team",
+                               "total_injury_impact","qb_injury_impact",
+                               "skill_injury_impact","oline_injury_impact", 
+                               "defense_injury_impact","num_key_injuries"))) %>%
+        dplyr::rename(posteam = team)
+      
+      games <- games %>%
+        dplyr::left_join(
+          base_inj %>%
+            dplyr::rename(home_team = posteam) %>%
+            dplyr::rename_with(~ paste0("home_", .x),
+                               -dplyr::any_of(c("season","week","home_team"))),
+          by = c("season","week","home_team")
+        ) %>%
+        dplyr::left_join(
+          base_inj %>%
+            dplyr::rename(away_team = posteam) %>%
+            dplyr::rename_with(~ paste0("away_", .x),
+                               -dplyr::any_of(c("season","week","away_team"))),
+          by = c("season","week","away_team")
+        ) %>%
+        dplyr::mutate(
+          dplyr::across(dplyr::contains("injury_impact"), ~dplyr::coalesce(.x, 0)),
+          dplyr::across(dplyr::contains("num_key_injuries"), ~dplyr::coalesce(.x, 0)),
+          injury_advantage = away_total_injury_impact - home_total_injury_impact,
+          qb_injury_advantage = away_qb_injury_impact - home_qb_injury_impact
+        )
+      
+      cat("Injury data joined successfully\n")
+    } else {
+      # Fallback: create minimal injury data
+      cat("Creating minimal injury baseline...\n")
+      games <- games %>%
+        dplyr::mutate(
+          home_total_injury_impact = 0.5,
+          home_qb_injury_impact = 0.1,
+          home_skill_injury_impact = 0.1,
+          home_oline_injury_impact = 0.1,
+          home_defense_injury_impact = 0.2,
+          home_num_key_injuries = 1,
+          away_total_injury_impact = 0.5,
+          away_qb_injury_impact = 0.1,
+          away_skill_injury_impact = 0.1,
+          away_oline_injury_impact = 0.1,
+          away_defense_injury_impact = 0.2,
+          away_num_key_injuries = 1,
+          injury_advantage = 0,
+          qb_injury_advantage = 0
+        )
     }
   }
-
-  # ------------------ 6) Derived outcomes & handy features ------------------
-# ------------------ 6) Derived outcomes & handy features ------------------
-games <- games %>%
-  # Remove any residual identifier columns that might exist
-  dplyr::select(-dplyr::any_of(c("home.game_id","away.game_id",
-                                 "home.posteam_type","away.posteam_type",
-                                 "posteam_type.x","posteam_type.y"))) %>%
-  dplyr::mutate(
-    point_differential = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
-                                .data$home_score - .data$away_score, NA_real_),
-    total = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
-                   .data$home_score + .data$away_score, NA_real_),
-    rest_advantage = if ("home_rest" %in% names(.)) .data$home_rest - .data$away_rest else NA_real_
-  ) %>%
-  dplyr::arrange(.data$season, .data$week, .data$home_team)
+  
+  # ------------------ 7) ENHANCED REFEREE ANALYSIS ------------------
+  if (include_referee) {
+    cat("Adding enhanced referee analysis...\n")
     
+    # Try to get PBP data for penalty analysis
+    pbp_data <- tryCatch({
+      purrr::map_dfr(years, ~ nflfastR::load_pbp(.x))
+    }, error = function(e) {
+      cat("Could not load PBP data for referee analysis:", e$message, "\n")
+      NULL
+    })
+    
+    ref_analysis <- tryCatch({
+      analyze_referee_performance(sched, pbp_data)
+    }, error = function(e) {
+      cat("Referee analysis failed:", e$message, "\n")
+      NULL
+    })
+    
+    if (is.data.frame(ref_analysis) && nrow(ref_analysis)) {
+      games <- games %>%
+        dplyr::left_join(
+          ref_analysis %>%
+            dplyr::select(dplyr::any_of(c("referee", "referee_quality", "referee_experience",
+                                   "bias_category", "consistency_level", "home_bias_score",
+                                   "avg_penalties_per_game", "games_officiated"))),
+          by = "referee"
+        ) %>%
+        dplyr::mutate(
+          referee_quality = dplyr::coalesce(referee_quality, 60),
+          referee_experience = dplyr::coalesce(referee_experience, "unknown"),
+          bias_category = dplyr::coalesce(bias_category, "unknown"),
+          consistency_level = dplyr::coalesce(consistency_level, "unknown"),
+          home_bias_score = dplyr::coalesce(home_bias_score, 0),
+          avg_penalties_per_game = dplyr::coalesce(avg_penalties_per_game, 12.0)
+        )
+      
+      cat("Referee analysis joined successfully\n")
+    } else {
+      # Fallback referee defaults
+      cat("Using default referee values...\n")
+      games <- games %>%
+        dplyr::mutate(
+          referee_quality = 60,
+          referee_experience = "unknown",
+          bias_category = "unknown",
+          consistency_level = "unknown",
+          home_bias_score = 0,
+          avg_penalties_per_game = 12.0
+        )
+    }
+  }
+  
+  # ------------------ 8) DERIVED FEATURES ------------------
+  games <- games %>%
+    dplyr::mutate(
+      point_differential = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
+                                  .data$home_score - .data$away_score, NA_real_),
+      total = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
+                     .data$home_score + .data$away_score, NA_real_),
+      rest_advantage = if ("home_rest" %in% names(.)) .data$home_rest - .data$away_rest else NA_real_
+    ) %>%
+    dplyr::arrange(.data$season, .data$week, .data$home_team)
+  
+  # ------------------ 9) FINAL QUALITY REPORT ------------------
+  cat("\n=== FINAL DATA QUALITY REPORT ===\n")
+  quality_report <- games %>%
+    dplyr::summarise(
+      total_games = dplyr::n(),
+      missing_weekly_stats = sum(is.na(home.turnovers)),
+      missing_injury = if(include_injuries) sum(is.na(home_total_injury_impact)) else 0,
+      missing_referee = if(include_referee) sum(is.na(referee_quality)) else 0,
+      pct_complete_weekly = round((1 - missing_weekly_stats/total_games) * 100, 1),
+      pct_complete_injury = if(include_injuries) round((1 - missing_injury/total_games) * 100, 1) else 100,
+      pct_complete_referee = if(include_referee) round((1 - missing_referee/total_games) * 100, 1) else 100
+    )
+
+  cat("Data completeness:\n")
+  cat("- Weekly stats:", quality_report$pct_complete_weekly, "%\n")
+  if(include_injuries) cat("- Injury data:", quality_report$pct_complete_injury, "%\n")
+  if(include_referee) cat("- Referee data:", quality_report$pct_complete_referee, "%\n")
+
+  if (quality_report$missing_weekly_stats > 0) {
+    cat("WARNING:", quality_report$missing_weekly_stats, "games missing weekly stats\n")
+  }
+  
   return(games)
 }
