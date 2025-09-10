@@ -26,6 +26,7 @@ map_team_abbreviation <- function(abbr) {
     abbr == "SD"  ~ "LAC",
     abbr == "STL" ~ "LA",
     abbr == "OAK" ~ "LV",
+    abbr == "WSH" ~ "WAS",
     TRUE ~ abbr
   )
 }

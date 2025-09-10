@@ -88,7 +88,12 @@ NFL_TEAM_MAPPINGS <- c(
   "Seattle Seahawks" = "SEA",
   "Tampa Bay Buccaneers" = "TB",
   "Tennessee Titans" = "TEN",
-  "Washington Commanders" = "WAS"
+  "Washington Commanders" = "WAS",
+  # legacy abbreviations mapped to current teams
+  "OAK" = "LV",
+  "SD"  = "LAC",
+  "STL" = "LA",
+  "WSH" = "WAS"
 )
 
 
@@ -98,8 +103,7 @@ NFL_TEAM_MAPPINGS <- c(
 #' @return Character string of cleaned team name
 #' @export
 clean_team_name <- function(team_name) {
-  if(team_name %in% names(NFL_TEAM_MAPPINGS)) {
-    return(NFL_TEAM_MAPPINGS[team_name])
-  }
+  mapped <- NFL_TEAM_MAPPINGS[team_name]
+  team_name <- ifelse(is.na(mapped), team_name, unname(mapped))
   return(team_name)
 }
