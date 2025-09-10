@@ -62,8 +62,9 @@ update_games <- function(years,
   } else {
     min(years_to_process):max(years_to_process)
   }
-  # guard: don't fall before the overall min requested year
-  weekly_years <- weekly_years[weekly_years >= min(years)]
+  # guard: allow previous season for carry-over when seeding Week 1
+  # but prevent fetching seasons before the earliest requested year
+  weekly_years <- weekly_years[weekly_years >= (min(years) - 1L)]
   
   weekly_data <- prepare_weekly(weekly_years)
   
@@ -94,6 +95,10 @@ update_games <- function(years,
   }
   
   combined <- combined %>%
+    mutate(game_id = dplyr::coalesce(!!!dplyr::select(., dplyr::any_of(c("game_id","game_id.x","game_id.y"))))) %>%
+    select(-dplyr::any_of(c("game_id.x","game_id.y","home.game_id","away.game_id",
+                            "home.posteam_type","away.posteam_type",
+                            "posteam_type.x","posteam_type.y"))) %>%
     distinct(season, week, home_team, away_team, game_id, .keep_all = TRUE) %>%
     arrange(season, week, home_team, away_team)
   
