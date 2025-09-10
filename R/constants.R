@@ -41,14 +41,6 @@ METRICS <- c(
   "def_third_down_conversion_rate", "def_fourth_down_conversion_rate", "def_red_zone_conversion_rate"
 )
 
-# Team abbreviation mapping
-TEAM_MAPPING <- list(
-  "SD" = "LAC",
-  "STL" = "LA",
-  "OAK" = "LV"
-)
-
-
 #' NFL Team Name Mappings
 #'
 #' A named vector mapping team abbreviations to full team names
