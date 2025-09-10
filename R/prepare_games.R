@@ -314,22 +314,20 @@ prepare_games <- function(start_year,
   }
 
   # ------------------ 6) Derived outcomes & handy features ------------------
-  games <- games %>%
-    # consolidate duplicate identifiers and drop unused columns
-    dplyr::mutate(game_id = dplyr::coalesce(.data$game_id, .data$game_id.x, .data$game_id.y)) %>%
-
-    dplyr::select(-dplyr::any_of(c("game_id.x","game_id.y",
-                                   "home.game_id","away.game_id",
-                                   "home.posteam_type","away.posteam_type",
-                                   "posteam_type.x","posteam_type.y"))) %>%
-    dplyr::mutate(
-      point_differential = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
-                                  .data$home_score - .data$away_score, NA_real_),
-      total = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
-                     .data$home_score + .data$away_score, NA_real_),
-      rest_advantage = if ("home_rest" %in% names(.)) .data$home_rest - .data$away_rest else NA_real_
-    ) %>%
-    dplyr::arrange(.data$season, .data$week, .data$home_team)
-  
+# ------------------ 6) Derived outcomes & handy features ------------------
+games <- games %>%
+  # Remove any residual identifier columns that might exist
+  dplyr::select(-dplyr::any_of(c("home.game_id","away.game_id",
+                                 "home.posteam_type","away.posteam_type",
+                                 "posteam_type.x","posteam_type.y"))) %>%
+  dplyr::mutate(
+    point_differential = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
+                                .data$home_score - .data$away_score, NA_real_),
+    total = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
+                   .data$home_score + .data$away_score, NA_real_),
+    rest_advantage = if ("home_rest" %in% names(.)) .data$home_rest - .data$away_rest else NA_real_
+  ) %>%
+  dplyr::arrange(.data$season, .data$week, .data$home_team)
+    
   return(games)
 }
