@@ -59,7 +59,6 @@ prepare_games <- function(start_year,
     dplyr::mutate(
       home_team = map_team_abbreviation(home_team),
       away_team = map_team_abbreviation(away_team)
-
     )
   
   cat("Available schedule features: ",
@@ -159,10 +158,13 @@ prepare_games <- function(start_year,
       by = intersect(c("season","week","away_team"), names(away_df))
     )
 
-  # Remove any residual identifiers from weekly joins
-  games <- games %>% dplyr::select(-dplyr::any_of(c("home.game_id","away.game_id",
-                                                   "home.posteam_type","away.posteam_type")))
-  
+  # Remove any residual identifiers from weekly joins (should rarely exist)
+  games <- games %>%
+    dplyr::select(-dplyr::any_of(c(
+      "home.game_id", "away.game_id",
+      "home.posteam_type", "away.posteam_type"
+    )))
+
   # Ensure away.spread_line exists
   if ("spread_line" %in% names(games)) {
     games <- games %>% dplyr::mutate(away.spread_line = -spread_line)
