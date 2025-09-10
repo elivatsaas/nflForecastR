@@ -57,8 +57,9 @@ prepare_games <- function(start_year,
   ) %>%
     dplyr::distinct() %>%
     dplyr::mutate(
-      home_team = clean_team_name(home_team),
-      away_team = clean_team_name(away_team)
+      home_team = map_team_abbreviation(home_team),
+      away_team = map_team_abbreviation(away_team)
+
     )
   
   cat("Available schedule features: ",
@@ -67,6 +68,17 @@ prepare_games <- function(start_year,
     cat("Referee data coverage:",
         round(mean(!is.na(sched$referee) & sched$referee != "")*100), "% of games\n")
   }
+
+  # Ensure prior season exists for Week 1 seeding
+  if (seed_week1 && (start_year - 1L) %in% years && !((start_year - 1L) %in% weekly_data$season)) {
+    weekly_data <- dplyr::bind_rows(prepare_weekly(start_year - 1L), weekly_data)
+  }
+
+  # Map team abbreviations in weekly data and drop identifier columns
+  if ("posteam" %in% names(weekly_data)) {
+    weekly_data$posteam <- map_team_abbreviation(weekly_data$posteam)
+  }
+  weekly_data <- weekly_data %>% dplyr::select(-dplyr::any_of(c("game_id", "posteam_type")))
 
   # Restrict schedule to seasons/weeks present in weekly_data but keep all teams
   valid_seasons <- unique(weekly_data$season)
@@ -146,6 +158,10 @@ prepare_games <- function(start_year,
       away_df,
       by = intersect(c("season","week","away_team"), names(away_df))
     )
+
+  # Remove any residual identifiers from weekly joins
+  games <- games %>% dplyr::select(-dplyr::any_of(c("home.game_id","away.game_id",
+                                                   "home.posteam_type","away.posteam_type")))
   
   # Ensure away.spread_line exists
   if ("spread_line" %in% names(games)) {
@@ -298,15 +314,8 @@ prepare_games <- function(start_year,
   # ------------------ 6) Derived outcomes & handy features ------------------
   games <- games %>%
     # consolidate duplicate identifiers and drop unused columns
-    {
-      id_cols <- intersect(c("game_id.x", "game_id.y"), names(.))
-      if (length(id_cols)) {
-        coalesce_cols <- dplyr::select(., dplyr::any_of(c("game_id", id_cols)))
-        dplyr::mutate(., game_id = rlang::exec(dplyr::coalesce, !!!coalesce_cols))
-      } else {
-        .
-      }
-    } %>%
+    dplyr::mutate(game_id = dplyr::coalesce(.data$game_id, .data$game_id.x, .data$game_id.y)) %>%
+
     dplyr::select(-dplyr::any_of(c("game_id.x","game_id.y",
                                    "home.game_id","away.game_id",
                                    "home.posteam_type","away.posteam_type",

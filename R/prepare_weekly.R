@@ -20,12 +20,13 @@ prepare_weekly <- function(years) {
     pbp_data <- map_df(years, function(year) {
       suppressMessages(nflfastR::load_pbp(year))
     })
-    # Filter out plays without a valid posteam or defteam
+    # Filter out plays without a valid posteam or defteam and map legacy abbreviations
     pbp_data <- pbp_data %>%
       filter(!is.na(posteam) & !is.na(defteam)) %>%
       mutate(
-        posteam = clean_team_name(posteam),
-        defteam = clean_team_name(defteam)
+        posteam = map_team_abbreviation(posteam),
+        defteam = map_team_abbreviation(defteam)
+
       )
 
     first_appearances <- pbp_data %>%
