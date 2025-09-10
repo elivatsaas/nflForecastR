@@ -26,6 +26,7 @@ prepare_weekly <- function(years) {
       mutate(
         posteam = map_team_abbreviation(posteam),
         defteam = map_team_abbreviation(defteam)
+
       )
 
     first_appearances <- pbp_data %>%
