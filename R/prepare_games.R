@@ -59,6 +59,7 @@ prepare_games <- function(start_year,
     dplyr::mutate(
       home_team = map_team_abbreviation(home_team),
       away_team = map_team_abbreviation(away_team)
+
     )
   
   cat("Available schedule features: ",
@@ -314,6 +315,7 @@ prepare_games <- function(start_year,
   games <- games %>%
     # consolidate duplicate identifiers and drop unused columns
     dplyr::mutate(game_id = dplyr::coalesce(.data$game_id, .data$game_id.x, .data$game_id.y)) %>%
+
     dplyr::select(-dplyr::any_of(c("game_id.x","game_id.y",
                                    "home.game_id","away.game_id",
                                    "home.posteam_type","away.posteam_type",
