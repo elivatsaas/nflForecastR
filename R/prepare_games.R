@@ -204,24 +204,35 @@ prepare_games <- function(years,
   
   # ------------------ 6) APPLY WEEK 1 SEEDING ------------------
   if (seed_week1) {
-    prior_season <- min(years) - 1L
-    if (prior_season %in% weekly_data$season) {
-      cat("Applying Week 1 seeding from", prior_season, "data...\n")
+    cat("Applying Week 1 seeding for all years...\n")
+    
+    # Create seeding data for each year from the previous year's final week
+    all_carry_data <- data.frame()
+    
+    for (target_year in years) {
+      prior_year <- target_year - 1L
       
-      # Get carryover data from prior season
-      carry <- weekly_data %>%
-        dplyr::filter(season == prior_season) %>%
-        dplyr::group_by(posteam, season) %>%
-        dplyr::filter(week == max(week)) %>%
-        dplyr::ungroup() %>%
-        dplyr::mutate(season = season + 1L) %>%
-        dplyr::select(posteam, season, dplyr::all_of(lag_cols))
+      if (prior_year %in% weekly_data$season) {
+        cat("Creating seeding data for", target_year, "from", prior_year, "data\n")
+        
+        carry_year <- weekly_data %>%
+          dplyr::filter(season == prior_year) %>%
+          dplyr::group_by(posteam, season) %>%
+          dplyr::filter(week == max(week)) %>%
+          dplyr::ungroup() %>%
+          dplyr::mutate(season = target_year) %>%  # Set to target year
+          dplyr::select(posteam, season, dplyr::all_of(lag_cols))
+        
+        all_carry_data <- rbind(all_carry_data, carry_year)
+      }
+    }
+    
+    if (nrow(all_carry_data) > 0) {
+      cat("Found seeding data for", nrow(all_carry_data), "team-year combinations\n")
       
-      cat("Found seeding data for", length(unique(carry$posteam)), "teams\n")
-      
-      # Join seeding data
+      # Join all seeding data
       weekly_lag <- weekly_lag %>%
-        dplyr::left_join(carry, by = c("posteam","season"), suffix = c("", "_carry"))
+        dplyr::left_join(all_carry_data, by = c("posteam","season"), suffix = c("", "_carry"))
       
       # Apply seeding only to Week 1 of target years
       filled_total <- 0
@@ -230,14 +241,14 @@ prepare_games <- function(years,
         if (carry_nm %in% names(weekly_lag)) {
           filled_count <- sum(
             weekly_lag$week == 1 & 
-            weekly_lag$season %in% years &  # Only fill target years
+            weekly_lag$season %in% years &
             is.na(weekly_lag[[nm]]) & 
             !is.na(weekly_lag[[carry_nm]])
           )
           
           weekly_lag[[nm]] <- ifelse(
             weekly_lag$week == 1 & 
-            weekly_lag$season %in% years &  # Only fill target years
+            weekly_lag$season %in% years &
             is.na(weekly_lag[[nm]]),
             weekly_lag[[carry_nm]],
             weekly_lag[[nm]]
@@ -246,7 +257,9 @@ prepare_games <- function(years,
           filled_total <- filled_total + filled_count
         }
       }
-      cat("Filled", filled_total, "Week 1 lagged values\n")
+      cat("Filled", filled_total, "Week 1 lagged values across all years\n")
+    } else {
+      cat("No seeding data available\n")
     }
   }
   
