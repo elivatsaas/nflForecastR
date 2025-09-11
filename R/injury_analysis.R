@@ -73,12 +73,14 @@ analyze_injury_impacts <- function(start_year, end_year) {
       dplyr::mutate(
         # Use roster position if available, otherwise injury report position
         pos_final = dplyr::coalesce(roster_pos, position),
-        # Infer depth based on position and depth chart
+        # FIXED: Safely extract numeric depth from depth_chart_position
         depth = dplyr::case_when(
-          !is.na(depth_chart_position) ~ as.numeric(depth_chart_position),
+          !is.na(depth_chart_position) ~ as.numeric(stringr::str_extract(depth_chart_position, "\\d+")),
           pos_final %in% c("QB", "T", "G", "C") ~ 1,  # Key positions default to starter
           TRUE ~ 2  # Other positions default to backup
         ),
+        # Handle cases where no number was extracted
+        depth = dplyr::coalesce(depth, ifelse(pos_final %in% c("QB", "T", "G", "C"), 1, 2)),
         # Depth penalty (starters hurt more than backups)
         depth_penalty = dplyr::case_when(
           depth == 1 ~ 1.00,  # starter
