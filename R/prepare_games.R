@@ -165,23 +165,29 @@ prepare_games <- function(years,
   
   cat("Schedule loaded:", nrow(sched), "games (target years only)\n")
   
-  # ------------------ 4) ENSURE COMPLETE TEAM-WEEK GRID ------------------
-  # This is the key fix - ensure all teams have entries for all weeks
-  all_teams <- c("ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", 
-                 "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC", 
-                 "LV", "LAC", "LA", "MIA", "MIN", "NE", "NO", "NYG", 
-                 "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS")
+ # ------------------ 4) EXTRACT ACTUAL TEAM-WEEK COMBINATIONS ------------------
+  # Only create rows for team-week combinations that correspond to actual games
   
-  # Get weeks that exist in schedule
-  valid_weeks <- unique(sched$week)
-  valid_seasons <- unique(sched$season)
+  # Extract all team-week combinations from the schedule
+  actual_team_weeks <- sched %>%
+    dplyr::select(season, week, home_team, away_team) %>%
+    tidyr::pivot_longer(cols = c(home_team, away_team), 
+                       names_to = "side", values_to = "posteam") %>%
+    dplyr::select(season, week, posteam) %>%
+    dplyr::distinct()
   
-  # Create complete grid for all team-week combinations
-  complete_grid <- tidyr::expand_grid(
-    season = weekly_years,  # Include all weekly_years for seeding
-    week = valid_weeks,
-    posteam = all_teams
-  )
+  # Add prior year team-weeks for seeding (but only for teams that exist)
+  if (seed_week1) {
+    prior_year_teams <- weekly_data %>%
+      dplyr::filter(season == min(years) - 1L) %>%
+      dplyr::select(season, week, posteam) %>%
+      dplyr::distinct()
+    
+    actual_team_weeks <- dplyr::bind_rows(actual_team_weeks, prior_year_teams) %>%
+      dplyr::distinct()
+  }
+  
+  cat("Actual team-week combinations identified:", nrow(actual_team_weeks), "\n")
   
   # Standardize team abbreviations in weekly data
   if ("posteam" %in% names(weekly_data)) {
@@ -191,12 +197,12 @@ prepare_games <- function(years,
   # Remove columns that will be added from schedule
   weekly_data <- weekly_data %>% 
     dplyr::select(-dplyr::any_of(c("game_id", "posteam_type")))
-  
-  # Join actual data with complete grid to ensure no missing team-weeks
-  weekly_data_complete <- complete_grid %>%
+
+  # Join actual data with actual team-week combinations (no bye weeks!)
+  weekly_data_complete <- actual_team_weeks %>%
     dplyr::left_join(weekly_data, by = c("season", "week", "posteam"))
   
-  cat("Complete weekly grid created:", nrow(weekly_data_complete), "team-weeks\n")
+  cat("Complete weekly data (no bye weeks):", nrow(weekly_data_complete), "team-weeks\n")
   
   # ------------------ 5) CREATE LAGGED FEATURES ------------------
   key_cols <- c("season","week","posteam","game_id","posteam_type")
