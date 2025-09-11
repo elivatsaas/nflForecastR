@@ -223,7 +223,7 @@ prepare_games <- function(years,
     ) %>%
     dplyr::ungroup()
   
-  # ------------------ 6) ROBUST WEEK 1 SEEDING ------------------
+# ------------------ 6) ROBUST WEEK 1 SEEDING ------------------
   if (seed_week1) {
     cat("Applying robust Week 1 seeding for all years...\n")
     
@@ -235,9 +235,15 @@ prepare_games <- function(years,
       if (prior_year %in% weekly_data$season) {
         cat("Creating seeding data for", target_year, "from", prior_year, "data\n")
         
+        # Get teams that need seeding (teams that play in target year)
+        target_year_teams <- actual_team_weeks %>%
+          dplyr::filter(season == target_year) %>%
+          dplyr::pull(posteam) %>%
+          unique()
+        
         # For each team, get their most recent data from prior year
         carry_year <- weekly_data %>%
-          dplyr::filter(season == prior_year) %>%
+          dplyr::filter(season == prior_year, posteam %in% target_year_teams) %>%
           dplyr::group_by(posteam) %>%
           dplyr::arrange(desc(week)) %>%
           dplyr::slice(1) %>%
@@ -245,19 +251,21 @@ prepare_games <- function(years,
           dplyr::mutate(season = target_year) %>%
           dplyr::select(posteam, season, dplyr::all_of(lag_cols))
         
-        # Ensure all teams are represented
-        missing_teams <- setdiff(all_teams, carry_year$posteam)
+        # Check for missing teams and use league averages if needed
+        missing_teams <- setdiff(target_year_teams, carry_year$posteam)
         if (length(missing_teams) > 0) {
           cat("Warning: Missing seeding data for teams:", paste(missing_teams, collapse = ", "), "\n")
           # Use league averages for missing teams
-          league_avg <- carry_year %>%
-            dplyr::summarise(dplyr::across(dplyr::all_of(lag_cols), ~mean(.x, na.rm = TRUE))) %>%
-            dplyr::slice(rep(1, length(missing_teams))) %>%
-            dplyr::mutate(
-              posteam = missing_teams,
-              season = target_year
-            )
-          carry_year <- dplyr::bind_rows(carry_year, league_avg)
+          if (nrow(carry_year) > 0) {
+            league_avg <- carry_year %>%
+              dplyr::summarise(dplyr::across(dplyr::all_of(lag_cols), ~mean(.x, na.rm = TRUE))) %>%
+              dplyr::slice(rep(1, length(missing_teams))) %>%
+              dplyr::mutate(
+                posteam = missing_teams,
+                season = target_year
+              )
+            carry_year <- dplyr::bind_rows(carry_year, league_avg)
+          }
         }
         
         all_carry_data <- rbind(all_carry_data, carry_year)
@@ -271,12 +279,11 @@ prepare_games <- function(years,
       weekly_lag <- weekly_lag %>%
         dplyr::left_join(all_carry_data, by = c("posteam","season"), suffix = c("", "_carry"))
       
-      # Apply seeding to Week 1 and any missing early weeks
+      # Apply seeding to Week 1 for all teams
       filled_total <- 0
       for (nm in lag_cols) {
         carry_nm <- paste0(nm, "_carry")
         if (carry_nm %in% names(weekly_lag)) {
-          # Fill Week 1 for all teams, regardless of data availability
           filled_count <- sum(
             weekly_lag$week == 1 & 
             weekly_lag$season %in% years &
