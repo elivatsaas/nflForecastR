@@ -17,19 +17,21 @@ last_3_or_season_mean <- function(data, n = 3) {
   }
 }
 
-#' Map Team Abbreviations
+#' Map Team Abbreviations (single source of truth)
 #' @keywords internal
-#' @param abbr NFL old team name
+#' @param abbr character vector of team abbreviations
 #' @export
 map_team_abbreviation <- function(abbr) {
-  case_when(
-    abbr == "SD"  ~ "LAC",
-    abbr == "STL" ~ "LA",
-    abbr == "OAK" ~ "LV",
-    abbr == "WSH" ~ "WAS",
-    TRUE ~ abbr
+  dplyr::case_when(
+    abbr == "SD"   ~ "LAC",  # Chargers
+    abbr == "STL"  ~ "LAR",  # Rams
+    abbr == "OAK"  ~ "LV",   # Raiders
+    abbr == "WSH"  ~ "WAS",  # Washington
+    abbr == "LA"   ~ "LAR",  # generic LA -> Rams (older feeds)
+    TRUE           ~ abbr
   )
 }
+
 
 #' Calculate Momentum Differential
 #'
