@@ -91,8 +91,7 @@ enhance_coaching_analysis <- function(sched) {
 #' 1 week within (season, posteam) before joining to each game. Includes enhanced
 #' coaching, injury, and referee analysis.
 #'
-#' @param start_year integer, first season to include in final dataset
-#' @param end_year integer, last season to include in final dataset
+#' @param years vector of integers, seasons to include in final dataset
 #' @param include_injuries logical, join injury impacts using enhanced analysis
 #' @param include_coaching logical, join coaching tiers using enhanced analysis
 #' @param include_referee logical, join referee analysis and tendencies
@@ -101,36 +100,36 @@ enhance_coaching_analysis <- function(sched) {
 #' @return data.frame of games with home/away lagged features and schedule fields
 #' @import dplyr tidyr purrr stringr
 #' @export
-prepare_games <- function(start_year,
-                          end_year,
+prepare_games <- function(years,
                           include_injuries = TRUE,
                           include_coaching = TRUE,
                           include_referee = TRUE,
                           seed_week1 = TRUE) {
 
   cat("=== ENHANCED NFL DATA PREPARATION ===\n")
-  cat("Processing years:", start_year, "to", end_year, "\n")
+  cat("Processing years:", paste(years, collapse = ", "), "\n")
   cat("Features: Injuries =", include_injuries,
       "| Coaching =", include_coaching,
       "| Referee =", include_referee,
       "| Seed Week1 =", seed_week1, "\n")
   
-  years <- seq.int(start_year, end_year)
   if (!requireNamespace("nflreadr", quietly = TRUE))
     stop("nflreadr is required for prepare_games().")
   
-  # ------------------ 1) PREPARE WEEKLY DATA INTERNALLY ------------------
+  # ------------------ 1) DETERMINE YEARS FOR WEEKLY DATA ------------------
+  # Include prior year for seeding if requested
   weekly_years <- if (seed_week1) {
-    (start_year - 1L):end_year
+    (min(years) - 1L):max(years)
   } else {
-    start_year:end_year
+    years
   }
   
   cat("Preparing weekly data for years:", paste(weekly_years, collapse = ", "), "\n")
-  if (seed_week1 && (start_year - 1L) %in% weekly_years) {
-    cat("Including", start_year - 1L, "data for Week 1", start_year, "seeding\n")
+  if (seed_week1 && (min(years) - 1L) %in% weekly_years) {
+    cat("Including", min(years) - 1L, "data for Week 1", min(years), "seeding\n")
   }
   
+  # ------------------ 2) PREPARE WEEKLY DATA ------------------
   weekly_data <- tryCatch({
     prepare_weekly(weekly_years)
   }, error = function(e) {
@@ -143,9 +142,9 @@ prepare_games <- function(start_year,
   
   cat("Weekly data prepared:", nrow(weekly_data), "team-weeks\n")
   
-  # ------------------ 2) SCHEDULE DATA ------------------
+  # ------------------ 3) LOAD SCHEDULE DATA (TARGET YEARS ONLY) ------------------
   sched <- purrr::map_dfr(
-    years,
+    years,  # Only target years, not including prior year
     ~ nflreadr::load_schedules(.x) %>%
       dplyr::select(dplyr::any_of(c(
         "game_id","season","week","game_type",
@@ -168,32 +167,34 @@ prepare_games <- function(start_year,
       away_team = map_team_abbreviation(away_team)
     )
   
-  cat("Schedule loaded:", nrow(sched), "games\n")
+  cat("Schedule loaded:", nrow(sched), "games (target years only)\n")
   
-  # Clean weekly data
+  # ------------------ 4) CLEAN AND STANDARDIZE WEEKLY DATA ------------------
   if ("posteam" %in% names(weekly_data)) {
     weekly_data$posteam <- map_team_abbreviation(weekly_data$posteam)
   }
-  weekly_data <- weekly_data %>% dplyr::select(-dplyr::any_of(c("game_id", "posteam_type")))
-
-  # Filter schedule to match weekly data availability
-  valid_seasons <- unique(weekly_data$season)
-  valid_weeks <- unique(weekly_data$week)
-  sched <- sched %>%
-    dplyr::filter(season %in% valid_seasons, week %in% valid_weeks)
   
-  # ------------------ 3) WEEKLY → LAGGED FEATURES ------------------
+  # Remove columns that will be added from schedule
+  weekly_data <- weekly_data %>% 
+    dplyr::select(-dplyr::any_of(c("game_id", "posteam_type")))
+
+  # Filter to weeks that exist in our target schedule
+  valid_weeks <- unique(sched$week)
+  weekly_data_filtered <- weekly_data %>% 
+    dplyr::filter(week %in% valid_weeks)
+  
+  # ------------------ 5) CREATE LAGGED FEATURES ------------------
   key_cols <- c("season","week","posteam","game_id","posteam_type")
-  key_cols <- intersect(key_cols, names(weekly_data))
+  key_cols <- intersect(key_cols, names(weekly_data_filtered))
   
   pregame_cols <- intersect(c(
     "spread_line","total_line","div_game","roof","surface"
-  ), names(weekly_data))
+  ), names(weekly_data_filtered))
   
-  num_cols <- names(dplyr::select(weekly_data, dplyr::where(is.numeric)))
+  num_cols <- names(dplyr::select(weekly_data_filtered, dplyr::where(is.numeric)))
   lag_cols <- setdiff(num_cols, c(key_cols, pregame_cols))
   
-  weekly_lag <- weekly_data %>%
+  weekly_lag <- weekly_data_filtered %>%
     dplyr::arrange(.data$season, .data$posteam, .data$week) %>%
     dplyr::group_by(.data$season, .data$posteam) %>%
     dplyr::mutate(
@@ -201,12 +202,13 @@ prepare_games <- function(start_year,
     ) %>%
     dplyr::ungroup()
   
-  # Enhanced Week 1 seeding
+  # ------------------ 6) APPLY WEEK 1 SEEDING ------------------
   if (seed_week1) {
-    prior_season <- start_year - 1L
+    prior_season <- min(years) - 1L
     if (prior_season %in% weekly_data$season) {
       cat("Applying Week 1 seeding from", prior_season, "data...\n")
       
+      # Get carryover data from prior season
       carry <- weekly_data %>%
         dplyr::filter(season == prior_season) %>%
         dplyr::group_by(posteam, season) %>%
@@ -217,18 +219,26 @@ prepare_games <- function(start_year,
       
       cat("Found seeding data for", length(unique(carry$posteam)), "teams\n")
       
+      # Join seeding data
       weekly_lag <- weekly_lag %>%
         dplyr::left_join(carry, by = c("posteam","season"), suffix = c("", "_carry"))
       
+      # Apply seeding only to Week 1 of target years
       filled_total <- 0
       for (nm in lag_cols) {
         carry_nm <- paste0(nm, "_carry")
         if (carry_nm %in% names(weekly_lag)) {
-          filled_count <- sum(weekly_lag$week == 1 & 
-                             is.na(weekly_lag[[nm]]) & 
-                             !is.na(weekly_lag[[carry_nm]]))
+          filled_count <- sum(
+            weekly_lag$week == 1 & 
+            weekly_lag$season %in% years &  # Only fill target years
+            is.na(weekly_lag[[nm]]) & 
+            !is.na(weekly_lag[[carry_nm]])
+          )
+          
           weekly_lag[[nm]] <- ifelse(
-            weekly_lag$week == 1 & is.na(weekly_lag[[nm]]),
+            weekly_lag$week == 1 & 
+            weekly_lag$season %in% years &  # Only fill target years
+            is.na(weekly_lag[[nm]]),
             weekly_lag[[carry_nm]],
             weekly_lag[[nm]]
           )
@@ -240,8 +250,16 @@ prepare_games <- function(start_year,
     }
   }
   
-  # Build home/away dataframes
-  base_cols <- setdiff(names(weekly_lag), key_cols)
+  # ------------------ 7) FILTER TO TARGET YEARS ONLY ------------------
+  # This is the crucial step that was missing - remove prior year data after seeding
+  weekly_lag <- weekly_lag %>%
+    dplyr::filter(season %in% years)
+  
+  cat("Filtered weekly data to target years:", nrow(weekly_lag), "team-weeks\n")
+  
+  # ------------------ 8) BUILD HOME/AWAY DATAFRAMES ------------------
+  base_cols <- setdiff(names(weekly_lag), c("season", "week", "posteam"))
+  
   home_df <- weekly_lag %>%
     dplyr::select(season, week, posteam, dplyr::all_of(base_cols)) %>%
     dplyr::rename(home_team = posteam) %>%
@@ -252,7 +270,7 @@ prepare_games <- function(start_year,
     dplyr::rename(away_team = posteam) %>%
     dplyr::rename_with(~ paste0("away.", .x), .cols = dplyr::all_of(base_cols))
 
-  # ------------------ 4) JOIN SCHEDULE + LAGGED FEATURES ------------------
+  # ------------------ 9) JOIN SCHEDULE + LAGGED FEATURES ------------------
   games <- sched %>%
     dplyr::left_join(home_df, by = intersect(c("season","week","home_team"), names(home_df))) %>%
     dplyr::left_join(away_df, by = intersect(c("season","week","away_team"), names(away_df))) %>%
@@ -262,7 +280,7 @@ prepare_games <- function(start_year,
     games <- games %>% dplyr::mutate(away.spread_line = -spread_line)
   }
   
-  # ------------------ 5) ENHANCED COACHING ANALYSIS ------------------
+  # ------------------ 10) ENHANCED COACHING ANALYSIS ------------------
   if (include_coaching) {
     cat("Adding enhanced coaching analysis...\n")
     
@@ -340,12 +358,12 @@ prepare_games <- function(start_year,
     }
   }
   
-  # ------------------ 6) ENHANCED INJURY ANALYSIS ------------------
+  # ------------------ 11) ENHANCED INJURY ANALYSIS ------------------
   if (include_injuries) {
     cat("Adding enhanced injury analysis...\n")
     
     inj <- tryCatch({
-      analyze_injury_impacts(start_year, end_year)
+      analyze_injury_impacts(min(years), max(years))
     }, error = function(e) {
       cat("Injury analysis failed:", e$message, "\n")
       NULL
@@ -405,7 +423,7 @@ prepare_games <- function(start_year,
     }
   }
   
-  # ------------------ 7) ENHANCED REFEREE ANALYSIS ------------------
+  # ------------------ 12) ENHANCED REFEREE ANALYSIS ------------------
   if (include_referee) {
     cat("Adding enhanced referee analysis...\n")
     
@@ -458,7 +476,7 @@ prepare_games <- function(start_year,
     }
   }
   
-  # ------------------ 8) DERIVED FEATURES ------------------
+  # ------------------ 13) DERIVED FEATURES ------------------
   games <- games %>%
     dplyr::mutate(
       point_differential = ifelse(!is.na(.data$home_score) & !is.na(.data$away_score),
@@ -469,7 +487,7 @@ prepare_games <- function(start_year,
     ) %>%
     dplyr::arrange(.data$season, .data$week, .data$home_team)
   
-  # ------------------ 9) FINAL QUALITY REPORT ------------------
+  # ------------------ 14) FINAL QUALITY REPORT ------------------
   cat("\n=== FINAL DATA QUALITY REPORT ===\n")
   quality_report <- games %>%
     dplyr::summarise(
