@@ -86,10 +86,7 @@ enhance_coaching_analysis <- function(sched) {
 
 #' Enhanced Prepare NFL Schedule Data with Internal Weekly Data Generation
 #'
-#' Builds a modeling frame by joining nflreadr schedule with lagged team features.
-#' Automatically generates weekly team features using prepare_weekly() and lags them
-#' 1 week within (season, posteam) before joining to each game. Includes enhanced
-#' coaching, injury, and referee analysis.
+#' Fixed version that handles missing team-week combinations
 #'
 #' @param years vector of integers, seasons to include in final dataset
 #' @param include_injuries logical, join injury impacts using enhanced analysis
@@ -117,7 +114,6 @@ prepare_games <- function(years,
     stop("nflreadr is required for prepare_games().")
   
   # ------------------ 1) DETERMINE YEARS FOR WEEKLY DATA ------------------
-  # Include prior year for seeding if requested
   weekly_years <- if (seed_week1) {
     (min(years) - 1L):max(years)
   } else {
@@ -144,7 +140,7 @@ prepare_games <- function(years,
   
   # ------------------ 3) LOAD SCHEDULE DATA (TARGET YEARS ONLY) ------------------
   sched <- purrr::map_dfr(
-    years,  # Only target years, not including prior year
+    years,
     ~ nflreadr::load_schedules(.x) %>%
       dplyr::select(dplyr::any_of(c(
         "game_id","season","week","game_type",
@@ -169,7 +165,25 @@ prepare_games <- function(years,
   
   cat("Schedule loaded:", nrow(sched), "games (target years only)\n")
   
-  # ------------------ 4) CLEAN AND STANDARDIZE WEEKLY DATA ------------------
+  # ------------------ 4) ENSURE COMPLETE TEAM-WEEK GRID ------------------
+  # This is the key fix - ensure all teams have entries for all weeks
+  all_teams <- c("ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", 
+                 "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC", 
+                 "LV", "LAC", "LA", "MIA", "MIN", "NE", "NO", "NYG", 
+                 "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS")
+  
+  # Get weeks that exist in schedule
+  valid_weeks <- unique(sched$week)
+  valid_seasons <- unique(sched$season)
+  
+  # Create complete grid for all team-week combinations
+  complete_grid <- tidyr::expand_grid(
+    season = weekly_years,  # Include all weekly_years for seeding
+    week = valid_weeks,
+    posteam = all_teams
+  )
+  
+  # Standardize team abbreviations in weekly data
   if ("posteam" %in% names(weekly_data)) {
     weekly_data$posteam <- map_team_abbreviation(weekly_data$posteam)
   }
@@ -177,24 +191,25 @@ prepare_games <- function(years,
   # Remove columns that will be added from schedule
   weekly_data <- weekly_data %>% 
     dplyr::select(-dplyr::any_of(c("game_id", "posteam_type")))
-
-  # Filter to weeks that exist in our target schedule
-  valid_weeks <- unique(sched$week)
-  weekly_data_filtered <- weekly_data %>% 
-    dplyr::filter(week %in% valid_weeks)
+  
+  # Join actual data with complete grid to ensure no missing team-weeks
+  weekly_data_complete <- complete_grid %>%
+    dplyr::left_join(weekly_data, by = c("season", "week", "posteam"))
+  
+  cat("Complete weekly grid created:", nrow(weekly_data_complete), "team-weeks\n")
   
   # ------------------ 5) CREATE LAGGED FEATURES ------------------
   key_cols <- c("season","week","posteam","game_id","posteam_type")
-  key_cols <- intersect(key_cols, names(weekly_data_filtered))
+  key_cols <- intersect(key_cols, names(weekly_data_complete))
   
   pregame_cols <- intersect(c(
     "spread_line","total_line","div_game","roof","surface"
-  ), names(weekly_data_filtered))
+  ), names(weekly_data_complete))
   
-  num_cols <- names(dplyr::select(weekly_data_filtered, dplyr::where(is.numeric)))
+  num_cols <- names(dplyr::select(weekly_data_complete, dplyr::where(is.numeric)))
   lag_cols <- setdiff(num_cols, c(key_cols, pregame_cols))
   
-  weekly_lag <- weekly_data_filtered %>%
+  weekly_lag <- weekly_data_complete %>%
     dplyr::arrange(.data$season, .data$posteam, .data$week) %>%
     dplyr::group_by(.data$season, .data$posteam) %>%
     dplyr::mutate(
@@ -205,9 +220,6 @@ prepare_games <- function(years,
   # ------------------ 6) ROBUST WEEK 1 SEEDING ------------------
   if (seed_week1) {
     cat("Applying robust Week 1 seeding for all years...\n")
-    
-    # Strategy: For each team-year, find the most recent available data
-    # This handles cases where teams might be missing final week data
     
     all_carry_data <- data.frame()
     
@@ -222,10 +234,25 @@ prepare_games <- function(years,
           dplyr::filter(season == prior_year) %>%
           dplyr::group_by(posteam) %>%
           dplyr::arrange(desc(week)) %>%
-          dplyr::slice(1) %>%  # Take most recent week for each team
+          dplyr::slice(1) %>%
           dplyr::ungroup() %>%
           dplyr::mutate(season = target_year) %>%
           dplyr::select(posteam, season, dplyr::all_of(lag_cols))
+        
+        # Ensure all teams are represented
+        missing_teams <- setdiff(all_teams, carry_year$posteam)
+        if (length(missing_teams) > 0) {
+          cat("Warning: Missing seeding data for teams:", paste(missing_teams, collapse = ", "), "\n")
+          # Use league averages for missing teams
+          league_avg <- carry_year %>%
+            dplyr::summarise(dplyr::across(dplyr::all_of(lag_cols), ~mean(.x, na.rm = TRUE))) %>%
+            dplyr::slice(rep(1, length(missing_teams))) %>%
+            dplyr::mutate(
+              posteam = missing_teams,
+              season = target_year
+            )
+          carry_year <- dplyr::bind_rows(carry_year, league_avg)
+        }
         
         all_carry_data <- rbind(all_carry_data, carry_year)
       }
@@ -238,26 +265,14 @@ prepare_games <- function(years,
       weekly_lag <- weekly_lag %>%
         dplyr::left_join(all_carry_data, by = c("posteam","season"), suffix = c("", "_carry"))
       
-      # Apply seeding to Week 1 AND any missing early weeks for each team
+      # Apply seeding to Week 1 and any missing early weeks
       filled_total <- 0
       for (nm in lag_cols) {
         carry_nm <- paste0(nm, "_carry")
         if (carry_nm %in% names(weekly_lag)) {
-          # Find first available week for each team
-          team_first_weeks <- weekly_lag %>%
-            dplyr::filter(season %in% years, !is.na(.data[[nm]])) %>%
-            dplyr::group_by(posteam, season) %>%
-            dplyr::summarise(first_week = min(week), .groups = "drop")
-          
-          weekly_lag <- weekly_lag %>%
-            dplyr::left_join(team_first_weeks, by = c("posteam", "season"), suffix = c("", "_temp")) %>%
-            dplyr::mutate(
-              is_team_first_week = (week == 1) | 
-                                   (week == dplyr::coalesce(first_week, 999) & is.na(.data[[nm]]))
-            )
-          
+          # Fill Week 1 for all teams, regardless of data availability
           filled_count <- sum(
-            weekly_lag$is_team_first_week & 
+            weekly_lag$week == 1 & 
             weekly_lag$season %in% years &
             is.na(weekly_lag[[nm]]) & 
             !is.na(weekly_lag[[carry_nm]]),
@@ -265,7 +280,7 @@ prepare_games <- function(years,
           )
           
           weekly_lag[[nm]] <- ifelse(
-            weekly_lag$is_team_first_week & 
+            weekly_lag$week == 1 & 
             weekly_lag$season %in% years &
             is.na(weekly_lag[[nm]]),
             weekly_lag[[carry_nm]],
@@ -273,19 +288,16 @@ prepare_games <- function(years,
           )
           
           weekly_lag[[carry_nm]] <- NULL
-          weekly_lag$is_team_first_week <- NULL
-          weekly_lag$first_week <- NULL
           filled_total <- filled_total + filled_count
         }
       }
-      cat("Filled", filled_total, "missing early week values across all years\n")
+      cat("Filled", filled_total, "Week 1 values across all teams and years\n")
     } else {
       cat("No seeding data available\n")
     }
   }
   
   # ------------------ 7) FILTER TO TARGET YEARS ONLY ------------------
-  # This is the crucial step that was missing - remove prior year data after seeding
   weekly_lag <- weekly_lag %>%
     dplyr::filter(season %in% years)
   
@@ -331,7 +343,6 @@ prepare_games <- function(years,
                                "experience_level","win_percentage"))) %>%
         dplyr::distinct()
       
-      # Enhanced name matching
       games <- games %>%
         dplyr::mutate(
           home_coach_clean = stringr::str_trim(stringr::str_to_title(home_coach)),
@@ -359,7 +370,6 @@ prepare_games <- function(years,
           away_coach_experience = experience_level,
           away_win_percentage = win_percentage
         ) %>%
-        # Fill any remaining NAs with reasonable defaults
         dplyr::mutate(
           home_coaching_score = dplyr::coalesce(home_coaching_score, 45),
           away_coaching_score = dplyr::coalesce(away_coaching_score, 45),
@@ -375,7 +385,6 @@ prepare_games <- function(years,
       
       cat("Coaching data joined successfully\n")
     } else {
-      # Fallback coaching defaults
       cat("Using default coaching values...\n")
       games <- games %>%
         dplyr::mutate(
@@ -435,7 +444,6 @@ prepare_games <- function(years,
       
       cat("Injury data joined successfully\n")
     } else {
-      # Fallback: create minimal injury data
       cat("Creating minimal injury baseline...\n")
       games <- games %>%
         dplyr::mutate(
@@ -461,7 +469,6 @@ prepare_games <- function(years,
   if (include_referee) {
     cat("Adding enhanced referee analysis...\n")
     
-    # Try to get PBP data for penalty analysis
     pbp_data <- tryCatch({
       purrr::map_dfr(years, ~ nflfastR::load_pbp(.x))
     }, error = function(e) {
@@ -496,7 +503,6 @@ prepare_games <- function(years,
       
       cat("Referee analysis joined successfully\n")
     } else {
-      # Fallback referee defaults
       cat("Using default referee values...\n")
       games <- games %>%
         dplyr::mutate(
