@@ -1,12 +1,125 @@
-#' Enhanced Referee Performance Analysis
+#' Enhanced Referee Performance Analysis with Bias Detection
+#'
+#' Comprehensive analysis of NFL referee performance that evaluates officiating
+#' quality, bias tendencies, and penalty patterns. Integrates schedule data with
+#' play-by-play information to provide detailed referee assessments including
+#' home field bias detection and consistency measurements.
+#'
+#' @param schedule_data Data frame containing NFL schedule information with
+#'   referee assignments. Required columns:
+#'   \itemize{
+#'     \item referee - Name of the head referee for each game
+#'     \item season, week - Game timing information  
+#'     \item home_team, away_team - Team abbreviations
+#'     \item game_id - Unique game identifier
+#'   }
+#'   Optional columns:
+#'   \itemize{
+#'     \item game_type - Regular season vs playoff designation
+#'   }
+#'
+#' @param pbp_data Optional data frame containing play-by-play information for
+#'   enhanced penalty analysis. When provided, enables detailed penalty pattern
+#'   analysis. Expected columns include:
+#'   \itemize{
+#'     \item season, week, game_id - Game identification
+#'     \item penalty - Binary indicator for penalty plays (1 = penalty, 0 = no penalty)
+#'     \item penalty_team - Team that committed the penalty
+#'     \item penalty_type - Description of penalty type
+#'     \item penalty_yards - Yards assessed for the penalty
+#'     \item qtr - Quarter of the game
+#'     \item game_seconds_remaining - Time remaining in game
+#'   }
+#'   If NULL, analysis proceeds with basic referee statistics only.
+#'
+#' @return Data frame containing comprehensive referee analysis with the following columns:
+#'   \describe{
+#'     \item{referee}{Cleaned referee name (title case, standardized)}
+#'     \item{referee_quality}{Composite quality score (0-100) based on experience, 
+#'       consistency, bias, and game assignments}
+#'     \item{referee_experience}{Experience level: veteran, experienced, developing, new}
+#'     \item{games_officiated}{Total number of games officiated in dataset}
+#'     \item{seasons_active}{Number of seasons active as NFL referee}
+#'     \item{playoff_games}{Number of playoff games officiated}
+#'     \item{bias_category}{Home field bias classification: neutral, home_favoring,
+#'       away_favoring, slight_bias, unknown}
+#'     \item{home_bias_score}{Numerical bias score where positive values indicate
+#'       away team favoritism, negative values indicate home team favoritism}
+#'     \item{consistency_level}{Penalty calling consistency: very_consistent,
+#'       consistent, moderate, inconsistent, unknown}
+#'     \item{avg_penalties_per_game}{Average penalties called per game}
+#'   }
+#'   Additional columns when pbp_data is provided:
+#'   \describe{
+#'     \item{penalty_consistency}{Standard deviation of penalties per game}
+#'     \item{holding_rate, pre_snap_rate, etc.}{Rates for different penalty categories}
+#'     \item{crunch_time_rate}{Rate of penalties called in final 5 minutes}
+#'   }
+#'
+#' @details
+#' The referee analysis employs several sophisticated methodologies:
+#'
+#' **Quality Score Calculation** (0-100 scale):
+#' \itemize{
+#'   \item Experience Score: Up to 25 points based on seasons active (2.5 points per season)
+#'   \item Consistency Score: 5-20 points based on penalty calling consistency
+#'   \item Bias Score: 5-15 points based on neutrality (higher for neutral referees)
+#'   \item Game Count Score: Up to 15 points based on total games officiated
+#'   \item Playoff Score: Up to 10 points for playoff game assignments
+#'   \item Penalty Rate Score: Up to 15 points for appropriate penalty rates (8-16 per game)
+#' }
+#'
+#' **Bias Detection**: Analyzes the distribution of penalties called on home vs away teams:
+#' \itemize{
+#'   \item Neutral: Home penalty rate between 47-53% (±3% from expected 50%)
+#'   \item Home Favoring: Home penalty rate >53% (calls more penalties on away team)
+#'   \item Away Favoring: Home penalty rate <47% (calls more penalties on home team)
+#'   \item Slight Bias: Moderate deviations from neutral
+#' }
+#'
+#' **Penalty Pattern Analysis** (when pbp_data provided):
+#' \itemize{
+#'   \item Categorizes penalties into types: holding/blocking, pre-snap, pass interference,
+#'     personal fouls, procedural violations
+#'   \item Analyzes penalty timing: first half vs late game vs crunch time (final 5 minutes)
+#'   \item Measures consistency through standard deviation of penalties per game
+#' }
+#'
+#' **Data Quality Handling**:
+#' \itemize{
+#'   \item Filters referees with <5 games to ensure statistical reliability
+#'   \item Standardizes referee names (title case, spacing, common corrections)
+#'   \item Provides default values for referees without sufficient penalty data
+#'   \item Handles missing play-by-play data gracefully
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Basic referee analysis without play-by-play data
+#' schedule <- nflreadr::load_schedules(2020:2023)
+#' referee_analysis <- analyze_referee_performance(schedule)
 #' 
-#' Analyzes referee performance and officiating tendencies with improved
-#' error handling and bias detection
+#' # Enhanced analysis with penalty patterns
+#' pbp <- nflfastR::load_pbp(2020:2023)
+#' referee_analysis <- analyze_referee_performance(schedule, pbp)
 #' 
-#' @param schedule_data Complete schedule data with referee assignments
-#' @param pbp_data Play-by-play data for penalty analysis (optional)
-#' @return Enhanced referee analysis with bias detection and quality scores
+#' # View top-quality referees
+#' head(referee_analysis[order(-referee_analysis$referee_quality), ], 10)
+#' 
+#' # Check for bias patterns
+#' biased_refs <- referee_analysis[referee_analysis$bias_category != "neutral", ]
+#' 
+#' # Analyze consistency
+#' consistent_refs <- referee_analysis[
+#'   referee_analysis$consistency_level %in% c("very_consistent", "consistent"), ]
+#' }
+#'
+#' @seealso
+#' \code{\link{prepare_games}} for integration with full game preparation
+#' \code{\link{analyze_coaching_performance}} for coaching analysis
+#'
 #' @import dplyr purrr stringr
+#' @export
 analyze_referee_performance <- function(schedule_data, pbp_data = NULL) {
   
   cat("=== ENHANCED REFEREE ANALYSIS ===\n")
@@ -20,8 +133,12 @@ analyze_referee_performance <- function(schedule_data, pbp_data = NULL) {
   clean_schedule <- schedule_data %>%
     dplyr::filter(!is.na(referee), referee != "", referee != "TBD") %>%
     dplyr::mutate(
-      referee_clean = stringr::str_trim(stringr::str_to_title(referee)),
-      referee_clean = stringr::str_replace_all(referee_clean, "\\s+", " ")
+      referee_clean = stringr::str_trim(referee),
+      referee_clean = stringr::str_to_title(referee_clean),
+      referee_clean = stringr::str_replace_all(referee_clean, "\\s+", " "),
+      # Fix common name variations
+      referee_clean = stringr::str_replace_all(referee_clean, "Mcaulay", "McAulay"),
+      referee_clean = stringr::str_replace_all(referee_clean, "Mcdaniels", "McDaniels")
     )
   
   if (nrow(clean_schedule) == 0) {
@@ -58,11 +175,12 @@ analyze_referee_performance <- function(schedule_data, pbp_data = NULL) {
   if (!is.null(pbp_data) && "penalty" %in% names(pbp_data)) {
     cat("Analyzing penalty patterns with play-by-play data...\n")
     
-    # Join pbp with referee info
+    # Join pbp with referee info - rename to avoid conflicts
     pbp_with_ref <- pbp_data %>%
       dplyr::left_join(
         clean_schedule %>%
-          dplyr::select(season, week, game_id, referee_clean, home_team, away_team),
+          dplyr::select(season, week, game_id, referee_clean, home_team, away_team) %>%
+          dplyr::rename(sched_home_team = home_team, sched_away_team = away_team),
         by = c("season", "week", "game_id")
       ) %>%
       dplyr::filter(!is.na(referee_clean))
@@ -77,8 +195,8 @@ analyze_referee_performance <- function(schedule_data, pbp_data = NULL) {
       ref_penalties <- pbp_with_ref %>%
         dplyr::filter(penalty == 1, !is.na(referee_clean)) %>%
         dplyr::mutate(
-          penalty_on_home = penalty_team == home_team,
-          penalty_on_away = penalty_team == away_team,
+          penalty_on_home = penalty_team == sched_home_team,
+          penalty_on_away = penalty_team == sched_away_team,
           penalty_category = dplyr::case_when(
             stringr::str_detect(tolower(penalty_type), "holding|block") ~ "holding_blocking",
             stringr::str_detect(tolower(penalty_type), "false start|offside|neutral") ~ "pre_snap",
@@ -218,9 +336,12 @@ analyze_referee_performance <- function(schedule_data, pbp_data = NULL) {
         avg_penalties_per_game >= 6 & avg_penalties_per_game <= 20 ~ 10,
         TRUE ~ 5
       ),
+      # Apply penalty for very limited experience
+      limited_experience_penalty = ifelse(games_officiated < 5, 10, 0),
+      
       # Total quality score (0-100)
-      referee_quality = experience_score + consistency_score + bias_score + 
-                       game_count_score + playoff_score + penalty_rate_score
+      referee_quality = pmax(30, experience_score + consistency_score + bias_score + 
+                                 game_count_score + playoff_score + penalty_rate_score - limited_experience_penalty)
     ) %>%
     dplyr::arrange(desc(referee_quality)) %>%
     dplyr::rename(referee = referee_clean)
