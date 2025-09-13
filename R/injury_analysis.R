@@ -1,9 +1,9 @@
-#' Enhanced NFL Injury Impact Analysis with Multiple Missing Data Strategies
+#' Enhanced NFL Injury Impact Analysis with Schedule-Based Team-Week Grid
 #'
 #' Comprehensive analysis of NFL team injury impacts that combines official injury
 #' reports with roster data to calculate position-weighted injury impact scores.
-#' Provides sophisticated handling of missing data through multiple strategies,
-#' including performance-based proxies and zero-default approaches.
+#' This fixed version uses the actual schedule to determine which team-week
+#' combinations exist, preventing missing data issues when joining with game data.
 #'
 #' @param start_year Integer specifying the first NFL season to analyze.
 #'   Must be 2009 or later for injury data availability, though roster data
@@ -20,6 +20,9 @@
 #'       team performance patterns when official data is missing.
 #'   }
 #'   Default is "zero".
+#' @param actual_schedule Optional data frame containing schedule data with columns
+#'   season, week, home_team, away_team. If provided, avoids reloading schedule data.
+#'   If NULL, will load schedule data internally. Default is NULL.
 #'
 #' @return Data frame containing comprehensive injury analysis with the following columns:
 #'   \describe{
@@ -35,10 +38,14 @@
 #'     \item{num_key_injuries}{Count of injuries with significant impact (≥0.30 threshold).
 #'       Integer value representing number of key players affected}
 #'   }
-#'   The data frame contains all team-week combinations for the specified years,
-#'   ensuring no missing observations that could cause joins to fail.
+#'   The data frame contains only team-week combinations that correspond to actual
+#'   scheduled games, ensuring perfect alignment with schedule data for joins.
 #'
 #' @details
+#' **Key Fix**: This version creates the team-week grid based on actual scheduled games
+#' rather than a theoretical complete grid of all teams and weeks. This prevents
+#' missing data issues when joining injury data with schedule data.
+#'
 #' The injury analysis employs a sophisticated multi-factor scoring system:
 #'
 #' **Position Importance Weights**: Different positions receive different base weights
@@ -94,6 +101,7 @@
 #'   \item Infers injury impacts from offensive/defensive/QB performance declines
 #'   \item Provides more realistic estimates when official injury data is incomplete
 #'   \item Uses prior season carryover for Week 1 estimation
+#'   \item Only creates proxies for actual team-week combinations from schedule
 #' }
 #'
 #' **Data Quality Considerations**:
@@ -101,7 +109,7 @@
 #'   \item Only injuries with impact scores ≥0.05 are included to filter noise
 #'   \item Missing position data is handled with reasonable defaults
 #'   \item Team abbreviations are standardized to current naming conventions
-#'   \item Complete grid ensures all team-week combinations are present
+#'   \item Grid matches actual schedule exactly to prevent join mismatches
 #' }
 #'
 #' @examples
@@ -112,8 +120,9 @@
 #' # Enhanced analysis with performance-based inference
 #' injury_data <- analyze_injury_impacts(2015, 2024, missing_strategy = "weight")
 #' 
-#' # Historical analysis for specific period
-#' injury_data <- analyze_injury_impacts(2009, 2019, missing_strategy = "zero")
+#' # Use with existing schedule data to avoid reloading
+#' schedule <- nflreadr::load_schedules(2023)
+#' injury_data <- analyze_injury_impacts(2023, 2023, "zero", schedule)
 #' 
 #' # Analyze injury patterns
 #' high_impact_weeks <- injury_data %>%
@@ -125,25 +134,13 @@
 #'   filter(qb_injury_impact > 0.5) %>%
 #'   group_by(team, season) %>%
 #'   summarise(qb_injury_weeks = n(), .groups = "drop")
-#' 
-#' # Team injury burden by season
-#' team_burden <- injury_data %>%
-#'   group_by(team, season) %>%
-#'   summarise(
-#'     avg_injury_impact = mean(total_injury_impact),
-#'     total_key_injuries = sum(num_key_injuries),
-#'     .groups = "drop"
-#'   )
 #' }
 #'
 #' @section Performance Impact:
 #' When using the "weight" strategy, the function requires loading weekly performance
-#' data which can be memory and time intensive for large date ranges. Consider:
-#' \itemize{
-#'   \item Using "zero" strategy for initial exploration
-#'   \item Limiting date ranges for "weight" strategy analysis
-#'   \item Saving results for reuse in multiple analyses
-#' }
+#' data which can be memory and time intensive for large date ranges. The function
+#' now only creates performance proxies for actual scheduled team-week combinations,
+#' improving efficiency.
 #'
 #' @section Integration:
 #' This function is designed to integrate seamlessly with \code{\link{prepare_games}}:
@@ -160,11 +157,11 @@
 #' \code{\link{nflreadr::load_injuries}} for underlying injury data
 #' \code{\link{nflreadr::load_rosters_weekly}} for roster/depth chart data
 #'
-#' @import dplyr tidyr tibble stringr
-#' @importFrom nflreadr load_injuries load_rosters_weekly
+#' @import dplyr tidyr tibble stringr purrr
+#' @importFrom nflreadr load_injuries load_rosters_weekly load_schedules
 #' @export
-analyze_injury_impacts <- function(start_year, end_year, missing_strategy = "zero") {
-    cat("=== ENHANCED INJURY ANALYSIS ===\n")
+analyze_injury_impacts <- function(start_year, end_year, missing_strategy = "zero", actual_schedule = NULL) {
+    cat("=== ENHANCED INJURY ANALYSIS (SCHEDULE-BASED) ===\n")
     cat("Processing years:", start_year, "to", end_year, "\n")
     cat("Missing data strategy:", missing_strategy, "\n")
     
@@ -212,6 +209,53 @@ analyze_injury_impacts <- function(start_year, end_year, missing_strategy = "zer
         severity = c(1.00,0.80,0.40,0.10)
     )
     
+    # CRITICAL FIX: Create grid based on actual schedule, not theoretical complete grid
+    if (is.null(actual_schedule)) {
+        # Load actual schedule to get real team-week combinations
+        cat("Loading actual schedule data to determine team-week combinations...\n")
+        sched <- tryCatch({
+            purrr::map_dfr(
+                start_year:end_year,
+                ~ nflreadr::load_schedules(.x) %>%
+                    dplyr::select(season, week, home_team, away_team) %>%
+                    dplyr::mutate(
+                        home_team = map_team_abbreviation(home_team),
+                        away_team = map_team_abbreviation(away_team)
+                    )
+            )
+        }, error = function(e) {
+            cat("Error loading schedule:", e$message, "\n")
+            return(data.frame())
+        })
+        
+        if (nrow(sched) == 0) {
+            stop("Could not load schedule data for creating team-week grid")
+        }
+        
+    } else {
+        # Use provided schedule
+        sched <- actual_schedule %>%
+            dplyr::filter(season >= start_year, season <= end_year) %>%
+            dplyr::select(season, week, home_team, away_team) %>%
+            dplyr::mutate(
+                home_team = map_team_abbreviation(home_team),
+                away_team = map_team_abbreviation(away_team)
+            )
+    }
+    
+    # Extract actual team-week combinations from schedule
+    actual_team_weeks <- sched %>%
+        dplyr::select(season, week, home_team, away_team) %>%
+        tidyr::pivot_longer(
+            cols = c(home_team, away_team), 
+            names_to = "side", 
+            values_to = "team"
+        ) %>%
+        dplyr::select(season, week, team) %>%
+        dplyr::distinct()
+    
+    cat("Using actual team-week combinations:", nrow(actual_team_weeks), "team-weeks\n")
+    
     # Process actual injury data
     actual_injury_data <- data.frame()
     
@@ -227,7 +271,7 @@ analyze_injury_impacts <- function(start_year, end_year, missing_strategy = "zer
                     dplyr::rename(roster_pos = position, roster_status = status) %>%
                     dplyr::mutate(team = map_team_abbreviation(team)),
                 by = c("season","week","team","gsis_id"),
-                relationship = "many-to-many"  # Handle the warning
+                relationship = "many-to-many"
             ) %>%
             dplyr::mutate(
                 pos_final = dplyr::coalesce(roster_pos, position),
@@ -276,23 +320,11 @@ analyze_injury_impacts <- function(start_year, end_year, missing_strategy = "zer
         cat("No actual injury data available\n")
     }
     
-    # Create complete grid for all teams and weeks
-    all_teams <- c("ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", 
-                   "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC", 
-                   "LV", "LAC", "LA", "MIA", "MIN", "NE", "NO", "NYG", 
-                   "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS")
-    
-    complete_grid <- tidyr::expand_grid(
-        season = start_year:end_year,
-        week = 1:22,
-        team = all_teams
-    )
-    
     # Handle missing data based on strategy
     if (missing_strategy == "zero") {
         cat("Using zero defaults for missing injury data\n")
         
-        final_data <- complete_grid %>%
+        final_data <- actual_team_weeks %>%
             dplyr::left_join(actual_injury_data, by = c("season", "week", "team")) %>%
             dplyr::mutate(
                 total_injury_impact = dplyr::coalesce(total_injury_impact, 0),
@@ -347,8 +379,9 @@ analyze_injury_impacts <- function(start_year, end_year, missing_strategy = "zer
                     .groups = "drop"
                 )
             
-            # Create injury proxy based on performance decline
+            # Create injury proxy based on performance decline - but only for actual team-weeks
             performance_proxy <- performance_proxy %>%
+                dplyr::inner_join(actual_team_weeks, by = c("season", "week", "posteam" = "team")) %>%
                 dplyr::left_join(league_norms, by = c("season", "week")) %>%
                 dplyr::mutate(
                     # Performance decline = potential injury impact
@@ -378,7 +411,7 @@ analyze_injury_impacts <- function(start_year, end_year, missing_strategy = "zer
             cat("Created performance proxy for", nrow(performance_proxy), "team-weeks\n")
             
             # Combine actual data with performance proxy
-            final_data <- complete_grid %>%
+            final_data <- actual_team_weeks %>%
                 dplyr::left_join(actual_injury_data, by = c("season", "week", "team")) %>%
                 dplyr::left_join(performance_proxy, by = c("season", "week", "team"), 
                                  suffix = c("", "_proxy")) %>%
@@ -395,7 +428,7 @@ analyze_injury_impacts <- function(start_year, end_year, missing_strategy = "zer
             
         } else {
             cat("Warning: Could not load weekly data for weighting, falling back to zeros\n")
-            final_data <- complete_grid %>%
+            final_data <- actual_team_weeks %>%
                 dplyr::left_join(actual_injury_data, by = c("season", "week", "team")) %>%
                 dplyr::mutate(
                     total_injury_impact = dplyr::coalesce(total_injury_impact, 0),
@@ -476,6 +509,7 @@ analyze_injury_impacts <- function(start_year, end_year, missing_strategy = "zer
         cat("- Actual injury data coverage:", 
             round(nrow(actual_injury_data) / nrow(final_data) * 100, 1), "%\n")
     }
+    cat("- Perfect schedule alignment: All team-weeks match actual games\n")
     
     return(final_data)
 }
