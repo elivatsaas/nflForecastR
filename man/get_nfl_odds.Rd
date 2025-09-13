@@ -12,7 +12,8 @@ get_nfl_odds(
 )
 }
 \arguments{
-\item{api_key}{Character string containing your API key for the-odds-api.com. Defaults to the \code{ODDS_API_KEY} environment variable.}
+\item{api_key}{Character string containing your API key for the-odds-api.com. If
+not supplied, defaults to the \code{ODDS_API_KEY} environment variable.}
 
 \item{regions}{Character vector of regions (default: "us")}
 

@@ -6,7 +6,17 @@
 \usage{
 predict_with_model(prediction_data, model, training_data)
 }
+\arguments{
+\item{prediction_data}{Data frame of games to predict}
+
+\item{model}{Fitted \code{lm} or \code{ranger} model}
+
+\item{training_data}{Training data used to fit the model}
+}
+\value{
+A data frame with predictions and \code{home_win_prob}
+}
 \description{
-Automatically handles interaction terms for both lm and ranger models
-Creates interaction terms on-the-fly for prediction data
+Automatically handles interaction terms for both lm and ranger models and
+returns win probabilities for the home team.
 }

@@ -2,18 +2,129 @@
 % Please edit documentation in R/referee_analysis.R
 \name{analyze_referee_performance}
 \alias{analyze_referee_performance}
-\title{Analyze referee performance and officiating tendencies}
+\title{Enhanced Referee Performance Analysis with Bias Detection}
 \usage{
-analyze_referee_performance(schedule_data, pbp_data)
+analyze_referee_performance(schedule_data, pbp_data = NULL)
 }
 \arguments{
-\item{schedule_data}{Complete schedule data with referee assignments}
+\item{schedule_data}{Data frame containing NFL schedule information with
+referee assignments. Required columns:
+\itemize{
+\item referee - Name of the head referee for each game
+\item season, week - Game timing information
+\item home_team, away_team - Team abbreviations
+\item game_id - Unique game identifier
+}
+Optional columns:
+\itemize{
+\item game_type - Regular season vs playoff designation
+}}
 
-\item{pbp_data}{Play-by-play data for penalty analysis}
+\item{pbp_data}{Optional data frame containing play-by-play information for
+enhanced penalty analysis. When provided, enables detailed penalty pattern
+analysis. Expected columns include:
+\itemize{
+\item season, week, game_id - Game identification
+\item penalty - Binary indicator for penalty plays (1 = penalty, 0 = no penalty)
+\item penalty_team - Team that committed the penalty
+\item penalty_type - Description of penalty type
+\item penalty_yards - Yards assessed for the penalty
+\item qtr - Quarter of the game
+\item game_seconds_remaining - Time remaining in game
+}
+If NULL, analysis proceeds with basic referee statistics only.}
 }
 \value{
-Comprehensive referee analysis with bias detection
+Data frame containing comprehensive referee analysis with the following columns:
+\describe{
+\item{referee}{Cleaned referee name (title case, standardized)}
+\item{referee_quality}{Composite quality score (0-100) based on experience,
+consistency, bias, and game assignments}
+\item{referee_experience}{Experience level: veteran, experienced, developing, new}
+\item{games_officiated}{Total number of games officiated in dataset}
+\item{seasons_active}{Number of seasons active as NFL referee}
+\item{playoff_games}{Number of playoff games officiated}
+\item{bias_category}{Home field bias classification: neutral, home_favoring,
+away_favoring, slight_bias, unknown}
+\item{home_bias_score}{Numerical bias score where positive values indicate
+away team favoritism, negative values indicate home team favoritism}
+\item{consistency_level}{Penalty calling consistency: very_consistent,
+consistent, moderate, inconsistent, unknown}
+\item{avg_penalties_per_game}{Average penalties called per game}
+}
+Additional columns when pbp_data is provided:
+\describe{
+\item{penalty_consistency}{Standard deviation of penalties per game}
+\item{holding_rate, pre_snap_rate, etc.}{Rates for different penalty categories}
+\item{crunch_time_rate}{Rate of penalties called in final 5 minutes}
+}
 }
 \description{
-Analyze referee performance and officiating tendencies
+Comprehensive analysis of NFL referee performance that evaluates officiating
+quality, bias tendencies, and penalty patterns. Integrates schedule data with
+play-by-play information to provide detailed referee assessments including
+home field bias detection and consistency measurements.
+}
+\details{
+The referee analysis employs several sophisticated methodologies:
+
+\strong{Quality Score Calculation} (0-100 scale):
+\itemize{
+\item Experience Score: Up to 25 points based on seasons active (2.5 points per season)
+\item Consistency Score: 5-20 points based on penalty calling consistency
+\item Bias Score: 5-15 points based on neutrality (higher for neutral referees)
+\item Game Count Score: Up to 15 points based on total games officiated
+\item Playoff Score: Up to 10 points for playoff game assignments
+\item Penalty Rate Score: Up to 15 points for appropriate penalty rates (8-16 per game)
+}
+
+\strong{Bias Detection}: Analyzes the distribution of penalties called on home vs away teams:
+\itemize{
+\item Neutral: Home penalty rate between 47-53\% (±3\% from expected 50\%)
+\item Home Favoring: Home penalty rate >53\% (calls more penalties on away team)
+\item Away Favoring: Home penalty rate <47\% (calls more penalties on home team)
+\item Slight Bias: Moderate deviations from neutral
+}
+
+\strong{Penalty Pattern Analysis} (when pbp_data provided):
+\itemize{
+\item Categorizes penalties into types: holding/blocking, pre-snap, pass interference,
+personal fouls, procedural violations
+\item Analyzes penalty timing: first half vs late game vs crunch time (final 5 minutes)
+\item Measures consistency through standard deviation of penalties per game
+}
+
+\strong{Data Quality Handling}:
+\itemize{
+\item Filters referees with <5 games to ensure statistical reliability
+\item Standardizes referee names (title case, spacing, common corrections)
+\item Provides default values for referees without sufficient penalty data
+\item Handles missing play-by-play data gracefully
+}
+}
+\examples{
+\dontrun{
+# Basic referee analysis without play-by-play data
+schedule <- nflreadr::load_schedules(2020:2023)
+referee_analysis <- analyze_referee_performance(schedule)
+
+# Enhanced analysis with penalty patterns
+pbp <- nflfastR::load_pbp(2020:2023)
+referee_analysis <- analyze_referee_performance(schedule, pbp)
+
+# View top-quality referees
+head(referee_analysis[order(-referee_analysis$referee_quality), ], 10)
+
+# Check for bias patterns
+biased_refs <- referee_analysis[referee_analysis$bias_category != "neutral", ]
+
+# Analyze consistency
+consistent_refs <- referee_analysis[
+  referee_analysis$consistency_level \%in\% c("very_consistent", "consistent"), ]
+}
+
+}
+\seealso{
+\code{\link{prepare_games}} for integration with full game preparation
+\code{\link{analyze_coaching_performance}} for coaching analysis
 }

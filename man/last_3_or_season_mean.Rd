@@ -9,20 +9,27 @@ last_3_or_season_mean(data, n = 3)
 \arguments{
 \item{data}{Numeric vector containing statistics}
 
-\item{n}{Number of games to look back}
+\item{n}{Number of games to look back (default 3)}
 }
 \value{
 Numeric mean value
 }
 \description{
-Calculate mean of last \code{n} games or of the entire vector when fewer than \code{n} games are available
+Calculate Last 3 Games Average
 }
-\keyword{3}
 \keyword{Calculate}
+\keyword{\code{n}}
+\keyword{are}
+\keyword{available.}
+\keyword{entire}
+\keyword{fewer}
 \keyword{games}
 \keyword{internal}
 \keyword{last}
 \keyword{mean}
 \keyword{of}
 \keyword{or}
-\keyword{season}
+\keyword{than}
+\keyword{the}
+\keyword{vector}
+\keyword{when}

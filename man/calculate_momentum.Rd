@@ -18,5 +18,5 @@ Numeric momentum score
 }
 \description{
 Computes a simple momentum metric based on current value, last 3-game
-average, and season average
+average, and season average.
 }

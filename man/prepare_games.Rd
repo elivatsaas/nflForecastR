@@ -2,41 +2,106 @@
 % Please edit documentation in R/prepare_games.R
 \name{prepare_games}
 \alias{prepare_games}
-\title{Enhanced Prepare NFL Schedule Data}
+\title{Enhanced Prepare NFL Schedule Data with Internal Weekly Data Generation}
 \usage{
 prepare_games(
-  start_year,
-  end_year,
-  weekly_data,
+  years,
   include_injuries = TRUE,
   include_coaching = TRUE,
   include_referee = TRUE,
-  seed_week1 = TRUE
+  seed_week1 = TRUE,
+  injury_missing_strategy = "zero"
 )
 }
 \arguments{
-\item{start_year}{integer, first season}
+\item{years}{Vector of integers specifying the NFL seasons to include in the final dataset.
+Must be valid NFL seasons (typically 1999 onwards for complete data).}
 
-\item{end_year}{integer, last season}
+\item{include_injuries}{Logical indicating whether to include injury impact analysis.
+Requires injury data to be available. Default is TRUE.}
 
-\item{weekly_data}{data.frame produced by \code{prepare_weekly()} (team-week features)}
+\item{include_coaching}{Logical indicating whether to include enhanced coaching analysis
+with performance tiers and matchup advantages. Default is TRUE.}
 
-\item{include_injuries}{logical, join injury impacts if \code{analyze_injury_impacts()} exists}
+\item{include_referee}{Logical indicating whether to include referee analysis with
+bias detection and quality scores. Default is TRUE.}
 
-\item{include_coaching}{logical, join coaching tiers and lagged QB stability if
-\code{analyze_coaching_performance()} exists}
+\item{seed_week1}{Logical indicating whether to carry forward prior season's final
+statistics into Week 1 for lagged features. Helps with cold-start problem for
+season openers. Default is TRUE.}
 
-\item{include_referee}{logical, keep referee metadata (no PBP work here)}
-
-\item{seed_week1}{logical, if TRUE carry prior season’s final stats forward
-into Week 1 for lagged features}
+\item{injury_missing_strategy}{Character string specifying how to handle missing
+injury data. Options are:
+\itemize{
+\item "zero" - Use zeros as default values for missing injury impacts
+\item "weight" - Use 3-week performance weighting to estimate injury impacts
+}
+Default is "zero".}
 }
 \value{
-data.frame of games with home/away lagged features and schedule fields
+A data.frame containing NFL games with the following key components:
+\itemize{
+\item Schedule information (game_id, season, week, teams, scores, betting lines)
+\item Home and away lagged performance statistics (prefixed with "home." and "away.")
+\item Coaching analysis (coaching_advantage, coach tiers, experience levels)
+\item Injury impacts (total, positional, and advantage calculations)
+\item Referee analysis (quality scores, bias categories, penalty tendencies)
+\item Derived features (point_differential, rest_advantage, etc.)
+}
 }
 \description{
-Builds a modeling frame by joining nflreadr schedule with lagged team features
-from \code{weekly_data}. Team features are lagged 1 week
-within (season, posteam) before joining to each game. Optionally seed Week 1
-lagged features from the final game of the prior season.
+Comprehensive function that prepares NFL game data by combining schedule information
+with lagged weekly performance statistics, coaching analysis, injury impacts, and
+referee tendencies. Handles missing data gracefully and provides multiple strategies
+for dealing with incomplete information.
+}
+\details{
+This function performs several key operations:
+\enumerate{
+\item Loads and cleans schedule data with specific fixes for known missing values
+\item Prepares weekly team performance statistics with proper lagging
+\item Handles postponed games (like 2017 TB vs MIA) for proper Week 1 seeding
+\item Integrates coaching performance analysis with tier classifications
+\item Adds injury impact analysis with multiple missing data strategies
+\item Incorporates referee analysis with bias detection
+\item Creates derived features and advantage calculations
+}
+
+The function includes specific fixes for known data quality issues:
+\itemize{
+\item 2021 Week 15 NE@IND missing referee (sets to Carl Cheffers)
+\item 2017 Week 4 CHI@GB missing betting odds (calculated from spread)
+\item Coaches with insufficient games for analysis (provides defaults)
+\item Missing referee data (provides neutral defaults)
+}
+}
+\examples{
+\dontrun{
+# Basic usage for recent seasons
+games <- prepare_games(years = 2020:2023)
+
+# Comprehensive analysis with all features
+games <- prepare_games(
+  years = 2015:2024,
+  include_injuries = TRUE,
+  include_coaching = TRUE,
+  include_referee = TRUE,
+  seed_week1 = TRUE,
+  injury_missing_strategy = "weight"
+)
+
+# Minimal dataset without external analyses
+games <- prepare_games(
+  years = 2022:2024,
+  include_injuries = FALSE,
+  include_coaching = FALSE,
+  include_referee = FALSE
+)
+}
+
+}
+\seealso{
+\code{\link{analyze_coaching_performance}} for coaching analysis details
+\code{\link{analyze_referee_performance}} for referee analysis details
+\code{\link{analyze_injury_impacts}} for injury analysis details
 }

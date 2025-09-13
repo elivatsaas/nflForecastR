@@ -2,17 +2,117 @@
 % Please edit documentation in R/coach_analysis.R
 \name{analyze_coaching_performance}
 \alias{analyze_coaching_performance}
-\title{Analyze coaching performance and create tiers}
+\title{Analyze Coaching Performance and Create Tiers}
 \usage{
 analyze_coaching_performance(schedule_data)
 }
 \arguments{
-\item{schedule_data}{Complete schedule data with coach names and game results}
+\item{schedule_data}{Data frame containing NFL schedule information with the
+following required columns:
+\itemize{
+\item season - NFL season year
+\item week - Week number within season
+\item home_team, away_team - Team abbreviations
+\item home_score, away_score - Final game scores
+\item home_coach, away_coach - Head coach names
+\item div_game - Logical or integer indicating divisional games
+}
+Optional columns:
+\itemize{
+\item gameday - Game date (for filtering completed games only)
+}}
 }
 \value{
-List with: coach_tiers, matchup_analysis, special_situations,
-coaching_trends, starting_qbs
+A list containing five comprehensive coaching analysis components:
+\describe{
+\item{coach_tiers}{
+Data frame with coaching performance tiers including:
+\itemize{
+\item coach_name - Head coach name
+\item coach_tier - Performance tier (elite, very_good, good, average, below_average, poor)
+\item coaching_score - Composite coaching quality score (0-100)
+\item experience_level - Experience category (veteran, experienced, developing, emerging, rookie)
+\item win_percentage - Overall career win rate
+\item seasons_active - Number of seasons as head coach
+\item teams_coached - Number of different teams coached
+\item coaching_stability - Tenure stability measure
+}
+}
+\item{matchup_analysis}{
+Summary of coaching matchup types and their outcomes, showing how
+coaching advantages translate to game results
+}
+\item{special_situations}{
+Performance in special game contexts (divisional games, late season)
+by coach
+}
+\item{coaching_trends}{
+Career trajectory analysis showing improving/declining/stable coaches
+over multiple seasons
+}
+\item{starting_qbs}{
+Placeholder QB stability analysis (requires separate QB data for full implementation)
+}
+}
 }
 \description{
-Analyze coaching performance and create tiers
+Comprehensive analysis of NFL head coach performance that creates coaching tiers,
+analyzes matchup advantages, and tracks special situation performance. Only
+includes coaches with sufficient game sample sizes (16+ games) for reliable
+statistical analysis.
+}
+\details{
+The coaching analysis employs several key methodologies:
+
+\strong{Performance Tiers}: Coaches are classified into six tiers based on win percentage:
+\itemize{
+\item Elite (≥65.0\%) - Historically great coaches
+\item Very Good (58.0-64.9\%) - Consistently strong coaches
+\item Good (52.0-57.9\%) - Above average coaches
+\item Average (45.0-51.9\%) - League average coaches
+\item Below Average (40.0-44.9\%) - Struggling coaches
+\item Poor (<40.0\%) - Coaches with significant difficulties
+}
+
+\strong{Coaching Score}: Composite 0-100 metric incorporating:
+\itemize{
+\item Win percentage (60\% weight)
+\item Recent performance - last 3 seasons (25\% weight)
+\item Experience bonus (coaching years * 0.8)
+\item Stability bonus (5 points for stable tenure)
+\item Loyalty bonus (5 points for single-team coaches)
+}
+
+\strong{Experience Levels}: Based on seasons as head coach:
+\itemize{
+\item Veteran (15+ seasons)
+\item Experienced (8-14 seasons)
+\item Developing (4-7 seasons)
+\item Emerging (2-3 seasons)
+\item Rookie (1 season)
+}
+
+\strong{Sample Size Filter}: Only coaches with 16+ games are included to ensure
+statistical reliability and exclude interim/emergency coaches.
+}
+\examples{
+\dontrun{
+# Basic coaching analysis
+schedule <- nflreadr::load_schedules(2020:2023)
+coaching_analysis <- analyze_coaching_performance(schedule)
+
+# View top coaches
+head(coaching_analysis$coach_tiers, 10)
+
+# Analyze coaching matchups
+print(coaching_analysis$matchup_analysis)
+
+# Check coaching trends
+improving_coaches <- coaching_analysis$coaching_trends \%>\%
+  filter(career_trajectory == "improving")
+}
+
+}
+\seealso{
+\code{\link{prepare_games}} for integration with full game preparation
 }

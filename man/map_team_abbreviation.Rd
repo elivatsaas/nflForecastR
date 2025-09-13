@@ -2,14 +2,14 @@
 % Please edit documentation in R/helpers.R
 \name{map_team_abbreviation}
 \alias{map_team_abbreviation}
-\title{Map Team Abbreviations}
+\title{Map Team Abbreviations (single source of truth)}
 \usage{
 map_team_abbreviation(abbr)
 }
 \arguments{
-\item{abbr}{NFL old team name}
+\item{abbr}{character vector of team abbreviations}
 }
 \description{
-Map Team Abbreviations
+Map Team Abbreviations (single source of truth)
 }
 \keyword{internal}

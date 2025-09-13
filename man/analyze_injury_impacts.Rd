@@ -2,18 +2,180 @@
 % Please edit documentation in R/injury_analysis.R
 \name{analyze_injury_impacts}
 \alias{analyze_injury_impacts}
-\title{Analyze injury impacts across seasons (team-week summary)}
+\title{Enhanced NFL Injury Impact Analysis with Schedule-Based Team-Week Grid}
 \usage{
-analyze_injury_impacts(start_year, end_year)
+analyze_injury_impacts(
+  start_year,
+  end_year,
+  missing_strategy = "zero",
+  actual_schedule = NULL
+)
 }
 \arguments{
-\item{start_year}{integer}
+\item{start_year}{Integer specifying the first NFL season to analyze.
+Must be 2009 or later for injury data availability, though roster data
+extends back to 2002.}
 
-\item{end_year}{integer}
+\item{end_year}{Integer specifying the last NFL season to analyze.
+Cannot exceed current NFL season.}
+
+\item{missing_strategy}{Character string specifying how to handle missing
+injury data. Two strategies available:
+\itemize{
+\item "zero" - Use zeros as default values for all missing injury impacts.
+Conservative approach that assumes no injury impact when data is unavailable.
+\item "weight" - Use 3-week weighted performance decline as proxy for injury
+impacts. More sophisticated approach that infers injury impacts from
+team performance patterns when official data is missing.
+}
+Default is "zero".}
+
+\item{actual_schedule}{Optional data frame containing schedule data with columns
+season, week, home_team, away_team. If provided, avoids reloading schedule data.
+If NULL, will load schedule data internally. Default is NULL.}
 }
 \value{
-data.frame team-week impacts
+Data frame containing comprehensive injury analysis with the following columns:
+\describe{
+\item{season}{NFL season year}
+\item{week}{Week number within season (1-22, including playoffs)}
+\item{team}{Team abbreviation (standardized to current naming)}
+\item{total_injury_impact}{Composite injury impact score across all positions.
+Higher values indicate greater injury impact. Typical range: 0-3.0}
+\item{qb_injury_impact}{Quarterback-specific injury impact. Range: 0-1.2}
+\item{skill_injury_impact}{Impact for skill positions (RB, WR, TE). Range: 0-1.0}
+\item{oline_injury_impact}{Offensive line injury impact (T, G, C). Range: 0-1.0}
+\item{defense_injury_impact}{Defensive injury impact (all defensive positions). Range: 0-1.5}
+\item{num_key_injuries}{Count of injuries with significant impact (≥0.30 threshold).
+Integer value representing number of key players affected}
+}
+The data frame contains only team-week combinations that correspond to actual
+scheduled games, ensuring perfect alignment with schedule data for joins.
 }
 \description{
-Analyze injury impacts across seasons (team-week summary)
+Comprehensive analysis of NFL team injury impacts that combines official injury
+reports with roster data to calculate position-weighted injury impact scores.
+This fixed version uses the actual schedule to determine which team-week
+combinations exist, preventing missing data issues when joining with game data.
+}
+\details{
+\strong{Key Fix}: This version creates the team-week grid based on actual scheduled games
+rather than a theoretical complete grid of all teams and weeks. This prevents
+missing data issues when joining injury data with schedule data.
+
+The injury analysis employs a sophisticated multi-factor scoring system:
+
+\strong{Position Importance Weights}: Different positions receive different base weights
+reflecting their impact on team performance:
+\itemize{
+\item QB: 1.00 (highest impact)
+\item Offensive Line (T/C): 0.80-0.90 (critical for protection)
+\item Skill Positions (WR/RB): 0.70-0.80 (high offensive impact)
+\item Defensive Front: 0.70-0.80 (pressure and run stopping)
+\item Secondary: 0.50-0.70 (coverage impact)
+\item Special Teams: 0.10-0.30 (limited scope)
+}
+
+\strong{Injury Severity Multipliers}: Based on official injury report status:
+\itemize{
+\item Out: 1.00 (full impact)
+\item Doubtful: 0.80 (high likelihood of absence/limitation)
+\item Questionable: 0.40 (moderate uncertainty)
+\item Probable: 0.10 (minimal expected impact)
+}
+
+\strong{Depth Chart Penalties}: Account for player replaceability:
+\itemize{
+\item Starter (depth 1): 1.00 (full impact)
+\item Primary backup (depth 2): 0.60 (reduced impact)
+\item Deep backup (depth 3): 0.30 (minimal impact)
+\item Scout team/practice squad: 0.10 (negligible impact)
+}
+
+\strong{Position Group Bonuses}: Additional multipliers for critical positions:
+\itemize{
+\item QB: 1.20 (elevated importance)
+\item Center/Tackle: 1.10 (line anchors)
+\item Other positions: 1.00 (base rate)
+}
+
+\strong{Final Impact Score}:
+\code{impact = position_weight × severity × depth_penalty × position_bonus}
+
+*\emph{Missing Data Strategies}*:
+
+\emph{Zero Strategy}: Conservative approach suitable for:
+\itemize{
+\item Model training where missing data patterns are consistent
+\item Situations where injury impact uncertainty should be minimized
+\item Quick analysis without performance data dependencies
+}
+
+\emph{Weight Strategy}: Performance-based inference that:
+\itemize{
+\item Calculates 3-week weighted performance trends (50\%, 30\%, 20\% weights)
+\item Compares team performance to league averages
+\item Infers injury impacts from offensive/defensive/QB performance declines
+\item Provides more realistic estimates when official injury data is incomplete
+\item Uses prior season carryover for Week 1 estimation
+\item Only creates proxies for actual team-week combinations from schedule
+}
+
+\strong{Data Quality Considerations}:
+\itemize{
+\item Only injuries with impact scores ≥0.05 are included to filter noise
+\item Missing position data is handled with reasonable defaults
+\item Team abbreviations are standardized to current naming conventions
+\item Grid matches actual schedule exactly to prevent join mismatches
+}
+}
+\section{Performance Impact}{
+
+When using the "weight" strategy, the function requires loading weekly performance
+data which can be memory and time intensive for large date ranges. The function
+now only creates performance proxies for actual scheduled team-week combinations,
+improving efficiency.
+}
+
+\section{Integration}{
+
+This function is designed to integrate seamlessly with \code{\link{prepare_games}}:
+\code{
+games <- prepare_games(
+  years = 2020:2023,
+  include_injuries = TRUE,
+  injury_missing_strategy = "weight"
+)
+}
+}
+
+\examples{
+\dontrun{
+# Basic analysis with zero defaults for recent seasons
+injury_data <- analyze_injury_impacts(2020, 2023, missing_strategy = "zero")
+
+# Enhanced analysis with performance-based inference
+injury_data <- analyze_injury_impacts(2015, 2024, missing_strategy = "weight")
+
+# Use with existing schedule data to avoid reloading
+schedule <- nflreadr::load_schedules(2023)
+injury_data <- analyze_injury_impacts(2023, 2023, "zero", schedule)
+
+# Analyze injury patterns
+high_impact_weeks <- injury_data \%>\%
+  filter(total_injury_impact > 1.5) \%>\%
+  arrange(desc(total_injury_impact))
+
+# QB injury analysis
+qb_injuries <- injury_data \%>\%
+  filter(qb_injury_impact > 0.5) \%>\%
+  group_by(team, season) \%>\%
+  summarise(qb_injury_weeks = n(), .groups = "drop")
+}
+
+}
+\seealso{
+\code{\link{prepare_games}} for full game preparation with injury integration
+\code{\link{nflreadr::load_injuries}} for underlying injury data
+\code{\link{nflreadr::load_rosters_weekly}} for roster/depth chart data
 }
