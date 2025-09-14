@@ -1,6 +1,6 @@
-# nflForecastR
+# NFL Point Differential Forecasting
 
-NFL game prediction and analysis tools in R, focused on predicting point differentials and analyzing betting lines. This package provides comprehensive utilities for preparing NFL data, training prediction models, and evaluating betting opportunities.
+A simple NFL game prediction system that backtests on 2024 data and generates predictions for upcoming weeks.
 
 ## ⚠️ Important Disclaimer
 
@@ -12,166 +12,116 @@ This package is provided for informational and educational purposes only. Any pr
 
 The authors and contributors of nflForecastR are not responsible for any losses, damages, or legal issues that may arise from using this package for betting purposes. If you have a gambling problem, please call 1-800-GAMBLER for support.
 
-## Features
-
-- Data preparation and maintenance for NFL game statistics
-- Multiple modeling approaches with cross-validation (Linear Models, Random Forests)
-- Automated betting line analysis
-- Customizable visualization tools
-- Live odds integration via the-odds-api.com
-
 ## Installation
 
 ```r
-# Install development version from GitHub
-# install.packages("devtools")
-devtools::install_github("elivatsaas/nflForecastR")
-```
-
-## Setting the Odds API Key
-
-To retrieve live betting lines you need an API key from
-[the-odds-api.com](https://the-odds-api.com/). Set it via one of the
-following methods:
-
-### macOS/Linux
-```bash
-export ODDS_API_KEY="your_key_here"
-```
-
-### Windows (PowerShell)
-```powershell
-setx ODDS_API_KEY "your_key_here"
-```
-
-### In R
-```r
-Sys.setenv(ODDS_API_KEY = "your_key_here")
-```
-
-## Running Tests and Documentation
-
-Use the helper script to regenerate documentation and execute all tests:
-
-```bash
-Rscript scripts/run_all_tests.R
-```
-
-## Core Data Sets
-
-### tidy_weekly
-Week-by-week team performance metrics (2015-2023):
-- Offensive metrics (EPA, points, rushing/passing)
-- Defensive metrics (EPA, points allowed)
-- QB performance (completion %, passer rating)
-- Efficiency stats (3rd down %, red zone %)
-- Cumulative season statistics
-
-```r
-# Quick look at 2023 Chiefs data
+remotes::install_github("elivatsaas/nflForecastR", dependencies = TRUE)
 library(nflForecastR)
 library(dplyr)
-
-kc_data <- tidy_weekly %>%
-  filter(posteam == "KC", season == 2023) %>%
-  select(week, off_epa, def_epa, points_scored)
 ```
 
-### tidy_games
-Game-level dataset optimized for prediction:
-- Pre-game team statistics
-- Vegas lines (spreads and totals)
-- Game outcomes
-- Divisional matchup indicators
+## What This Code Does
+
+### Target Variable Options
+
+You can predict any `_outcome` variable in the dataset as your target. This example uses `point_differential_outcome`, but you could also predict:
+- `home.points_scored_outcome` (home team points)
+- `home.off_epa_outcome` (home team offensive EPA)
+- `home.qb_passer_rating_outcome` (home team QB rating)
+- Any other `_outcome` variable available
+
+### Part 1: Historical Backtesting
+
+The first section builds a dataset from 2015-2024 and tests how well the model would have performed on the 2024 season:
 
 ```r
-# View recent games
-recent_games <- tidy_games %>%
-  filter(season == 2023) %>%
-  select(season, week, home_team, away_team, 
-         point_differential, away.spread_line)
-```
-
-## Modeling Workflow
-
-
-```r
-library(nflForecastR)
-library(ranger)
-
-# 1. Build weekly and game data for 2019-2024
-weekly <- update_weekly(2019:2024, replace_existing = TRUE)
-games  <- prepare_games(start_year = 2019, end_year = 2024, weekly_data = weekly)
-
-# 2. Train on 2019-2023, hold out 2024
-train_games <- subset(games, season <= 2023)
-test_games  <- subset(games, season == 2024)
-
-# 3. Evaluate multiple formulas with cross-validation
-formulas <- list(
-  point_differential ~ home.qb_passer_rating + away.qb_passer_rating,
-  point_differential ~ home.off_epa + away.def_epa + home.rest - away.rest
+# Build historical data
+games <- prepare_games(
+  years            = 2015:2024,
+  include_injuries = FALSE,  # These features are turned off
+  include_coaching = TRUE,
+  include_referee  = FALSE,
+  seed_week1       = TRUE
 )
 
-evaluate_formula <- function(f) {
-  lm_res <- lm_cv(f, train_games, k = 5, seed = 42)
-  rf_res <- rf_cv(f, train_games, k = 5, seed = 42)
-  rbind(
-    data.frame(formula = deparse(f), model = "lm", lm_res$average_metrics),
-    data.frame(formula = deparse(f), model = "rf", rf_res$average_metrics)
-  )
-}
+# Example formula - you can customize this
+FORMULA <- point_differential_outcome ~ spread_line + home.off_epa_last3 + away.def_epa_last3
 
-results <- do.call(rbind, lapply(formulas, evaluate_formula))
-print(results)
+# Test on 2024 season (weeks 1-18)
+bt <- backtest_model(
+  years               = 2024,
+  start_week          = 1,
+  end_week            = 18,
+  model_type          = "lm",
+  formula             = FORMULA,
+  target_outcome      = "point_differential_outcome",
+  all_updated_games   = model_df
+)
+```
 
-# 4. Fit best model on all training data
-best <- results[which.max(results$SpreadAccuracy), ]
-best_formula <- as.formula(best$formula)
-if (best$model == "lm") {
-  final_model <- lm(best_formula, data = train_games)
-} else {
-  final_model <- ranger::ranger(best_formula, data = train_games, num.trees = 500)
-}
+This outputs:
+- Overall prediction accuracy metrics
+- Sample predictions showing predicted vs actual point differentials
 
-# 5. Predict 2024 games and visualize
-pred_2024 <- predict_with_model(test_games, final_model, training_data = train_games)
-head(pred_2024)
+### Part 2: Live Predictions
 
-# 6. Optional: backtest 2019-2024 walk-forward
-bt <- backtest_model(years = 2019:2024, model_type = best$model, formula = best_formula)
-bt$overall_metrics
+The second section trains on historical data and makes predictions for upcoming games:
 
-# 7. Prepare upcoming week and plot predictions
-upcoming <- prepare_predictions(weekly)
-future_preds <- predict_with_model(upcoming, final_model, training_data = train_games)
-create_prediction_plot(future_preds)
+```r
+# Prepare training data and games to predict
+data <- prepare_predictions(
+  target_week      = 2,     # Predicting week 2
+  target_season    = 2025,  # For 2025 season
+  training_start   = 2015,  # Train on 2015-2024 data
+  include_coaching = TRUE,
+  include_referee  = FALSE,
+  include_injuries = FALSE,
+  seed_week1       = TRUE
+)
+
+# Train the model
+fit <- stats::lm(FORMULA, data = data$training)
+
+# Make predictions and generate picks
+predicted_margin <- predict(fit, newdata = data$prediction)
+
+picks <- data$prediction %>%
+  mutate(
+    predicted_margin = predicted_margin,
+    pick_winner      = if_else(predicted_margin > 0, home_team, away_team),
+    ats_lean         = if_else(predicted_margin - spread_line > 0,
+                               paste0(home_team, " -", abs(spread_line)),
+                               paste0(away_team, " +", abs(spread_line)))
+  ) %>%
+  arrange(season, week, home_team)
+
+# Display results
+cat("\n=== MODEL ===\n")
+print(FORMULA)
+
+cat("\n=== PREDICTIONS (top 20) ===\n")
+print(head(select(picks, season, week, home_team, away_team,
+                  spread_line, predicted_margin, pick_winner, ats_lean), 20), 
+      row.names = FALSE)
+```
+
+This outputs a picks table with:
+- `predicted_margin`: How many points the home team is expected to win/lose by
+- `pick_winner`: Which team is predicted to win straight up
+- `ats_lean`: Against-the-spread recommendation
+
+## Key Design Choices
+
+- **No data leakage**: Only uses information available before games start
+- **Customizable features**: You can experiment with different combinations of the hundreds of available features
+- **Excludes certain features**: Referee and injury data are turned off in this example
+- **Complete cases only**: Drops games missing any predictor values
+
+## Output Example
 
 ```
-## Key Functions
-
-### Data Preparation
-- `prepare_weekly()`: Process weekly team statistics
-- `prepare_games()`: Create game-level prediction dataset
-- `calculate_means()`: Compute rolling averages and season means
-- `update_weekly()` / `update_games()`: Update datasets with new games
-
-### Modeling
-- `lm_cv()`: Linear model with cross-validation
-- `rf_cv()`: Random forest with cross-validation
-- `evaluate_formula()`: Assess model variable importance
-- `predict_with_model()`: Generate and format predictions
-
-### Visualization
-- `create_prediction_plot()`: Create visual game predictions
-
-
-## License
-
-This project is licensed under the MIT License.
-
-## Acknowledgments
-
-Built using data from:
-- nflfastR (play-by-play data)
-- the-odds-api.com (live betting odds)
+   season  week home_team away_team spread_line predicted_margin pick_winner ats_lean 
+    <int> <int> <chr>     <chr>           <dbl>            <dbl> <chr>       <chr>    
+ 1   2025     2 ARI       CAR               6.5             6.34 ARI         CAR +6.5 
+ 2   2025     2 BAL       CLE              11.5            12.5  BAL         BAL -11.5
+```
