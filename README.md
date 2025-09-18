@@ -55,7 +55,7 @@ bt <- backtest_model(
   model_type          = "lm",
   formula             = FORMULA,
   target_outcome      = "point_differential_outcome",
-  all_updated_games   = model_df
+  all_updated_games   = games
 )
 ```
 
